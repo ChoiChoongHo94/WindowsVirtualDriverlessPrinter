@@ -1,0 +1,2 @@
+C:\Users\cch\source\repos\WindowsDriverlessVirtualPrinter\x64\Debug\WindowsDriverlessVirtualPrinter.exe
+C:\Users\cch\source\repos\WindowsDriverlessVirtualPrinter\x64\Debug\WindowsDriverlessVirtualPrinter.pdb
