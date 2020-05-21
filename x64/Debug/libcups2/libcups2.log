@@ -1,0 +1,74 @@
+﻿cl : 명령줄 warning D9035: 'Gm' 옵션은 더 이상 사용되지 않으므로 이후 릴리스에서 제거될 예정입니다.
+  util.c
+  usersys.c
+c:\users\cch\source\repos\ippsample-master\cups\usersys.c(557): warning C4996: 'GetVersionExA': deprecated로 선언되었습니다.
+  c:\program files (x86)\windows kits\10\include\10.0.18362.0\um\sysinfoapi.h(387): note: 'GetVersionExA' 선언을 참조하십시오.
+  transcode.c
+  tls.c
+c:\users\cch\source\repos\ippsample-master\cups\tls-sspi.c(1662): warning C4267: '함수': 'size_t'에서 'DWORD'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+c:\users\cch\source\repos\ippsample-master\cups\tls-sspi.c(2301): warning C4267: '함수': 'size_t'에서 'DWORD'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+  thread.c
+c:\users\cch\source\repos\ippsample-master\cups\thread.c(356): warning C4244: 'return': 'uintptr_t'에서 '_cups_thread_t'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+  tempfile.c
+  string.c
+  snprintf.c
+  request.c
+  raster-stubs.c
+  raster-stream.c
+c:\users\cch\source\repos\ippsample-master\cups\raster-stream.c(1428): warning C4244: '초기화 중': '__int64'에서 'ssize_t'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+c:\users\cch\source\repos\ippsample-master\cups\raster-stream.c(1430): warning C4244: '초기화 중': '__int64'에서 'ssize_t'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+  raster-error.c
+  pwg-media.c
+  options.c
+  notify.c
+  md5passwd.c
+  md5.c
+  language.c
+  langprintf.c
+  ipp.c
+  코드를 생성하고 있습니다...
+  컴파일하고 있습니다...
+  ipp-vars.c
+  ipp-support.c
+  ipp-file.c
+  http.c
+c:\users\cch\source\repos\ippsample-master\cups\http.c(156): warning C4244: '=': 'SOCKET'에서 'int'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+c:\users\cch\source\repos\ippsample-master\cups\http.c(1755): warning C4267: '+=': 'size_t'에서 'uInt'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+c:\users\cch\source\repos\ippsample-master\cups\http.c(4105): warning C4267: '함수': 'size_t'에서 'int'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+c:\users\cch\source\repos\ippsample-master\cups\http.c(4745): warning C4267: '함수': 'size_t'에서 'int'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+  http-support.c
+  http-addrlist.c
+  http-addr.c
+c:\users\cch\source\repos\ippsample-master\cups\http-addr.c(176): warning C4244: '=': 'SOCKET'에서 'int'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+c:\users\cch\source\repos\ippsample-master\cups\http-addr.c(772): warning C4996: 'gethostbyname': Use getaddrinfo() or GetAddrInfoW() instead or define _WINSOCK_DEPRECATED_NO_WARNINGS to disable deprecated API warnings
+  c:\program files (x86)\windows kits\10\include\10.0.18362.0\um\winsock2.h(2219): note: 'gethostbyname' 선언을 참조하십시오.
+c:\users\cch\source\repos\ippsample-master\cups\http-addr.c(857): warning C4996: 'gethostbyname': Use getaddrinfo() or GetAddrInfoW() instead or define _WINSOCK_DEPRECATED_NO_WARNINGS to disable deprecated API warnings
+  c:\program files (x86)\windows kits\10\include\10.0.18362.0\um\winsock2.h(2219): note: 'gethostbyname' 선언을 참조하십시오.
+  hash.c
+c:\users\cch\source\repos\ippsample-master\cups\hash.c(266): warning C4267: '함수': 'size_t'에서 'int'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+  globals.c
+  getputfile.c
+  file.c
+c:\users\cch\source\repos\ippsample-master\cups\file.c(2218): warning C4244: '+=': '__int64'에서 'off_t'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+c:\users\cch\source\repos\ippsample-master\cups\file.c(2398): warning C4244: '=': '__int64'에서 'ssize_t'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+  encode.c
+  dir.c
+  dest.c
+  dest-options.c
+  dest-localization.c
+  dest-job.c
+  debug.c
+  auth.c
+  array.c
+  코드를 생성하고 있습니다...
+     x64\Debug\libcups2.lib 라이브러리 및 x64\Debug\libcups2.exp 개체를 생성하고 있습니다.
+LINK : warning LNK4098: 'LIBCMTD' defaultlib가 다른 라이브러리와 충돌합니다. /NODEFAULTLIB:library를 사용하십시오.
+zlibstatic.lib(adler32.obj) : warning LNK4099: 'zlibstatic.pdb' PDB를 'zlibstatic.lib(adler32.obj)' 또는 'C:\Users\cch\source\repos\ippsample-master\vcnet\x64\Debug\zlibstatic.pdb'에서 찾을 수 없습니다. 디버그 정보가 없는 것처럼 개체를 링크합니다.
+zlibstatic.lib(crc32.obj) : warning LNK4099: 'zlibstatic.pdb' PDB를 'zlibstatic.lib(crc32.obj)' 또는 'C:\Users\cch\source\repos\ippsample-master\vcnet\x64\Debug\zlibstatic.pdb'에서 찾을 수 없습니다. 디버그 정보가 없는 것처럼 개체를 링크합니다.
+zlibstatic.lib(deflate.obj) : warning LNK4099: 'zlibstatic.pdb' PDB를 'zlibstatic.lib(deflate.obj)' 또는 'C:\Users\cch\source\repos\ippsample-master\vcnet\x64\Debug\zlibstatic.pdb'에서 찾을 수 없습니다. 디버그 정보가 없는 것처럼 개체를 링크합니다.
+zlibstatic.lib(inflate.obj) : warning LNK4099: 'zlibstatic.pdb' PDB를 'zlibstatic.lib(inflate.obj)' 또는 'C:\Users\cch\source\repos\ippsample-master\vcnet\x64\Debug\zlibstatic.pdb'에서 찾을 수 없습니다. 디버그 정보가 없는 것처럼 개체를 링크합니다.
+zlibstatic.lib(inftrees.obj) : warning LNK4099: 'zlibstatic.pdb' PDB를 'zlibstatic.lib(inftrees.obj)' 또는 'C:\Users\cch\source\repos\ippsample-master\vcnet\x64\Debug\zlibstatic.pdb'에서 찾을 수 없습니다. 디버그 정보가 없는 것처럼 개체를 링크합니다.
+zlibstatic.lib(inffast.obj) : warning LNK4099: 'zlibstatic.pdb' PDB를 'zlibstatic.lib(inffast.obj)' 또는 'C:\Users\cch\source\repos\ippsample-master\vcnet\x64\Debug\zlibstatic.pdb'에서 찾을 수 없습니다. 디버그 정보가 없는 것처럼 개체를 링크합니다.
+zlibstatic.lib(trees.obj) : warning LNK4099: 'zlibstatic.pdb' PDB를 'zlibstatic.lib(trees.obj)' 또는 'C:\Users\cch\source\repos\ippsample-master\vcnet\x64\Debug\zlibstatic.pdb'에서 찾을 수 없습니다. 디버그 정보가 없는 것처럼 개체를 링크합니다.
+zlibstatic.lib(zutil.obj) : warning LNK4099: 'zlibstatic.pdb' PDB를 'zlibstatic.lib(zutil.obj)' 또는 'C:\Users\cch\source\repos\ippsample-master\vcnet\x64\Debug\zlibstatic.pdb'에서 찾을 수 없습니다. 디버그 정보가 없는 것처럼 개체를 링크합니다.
+  libcups2.vcxproj -> C:\Users\cch\source\repos\ippsample-master\vcnet\x64\Debug\libcups2.dll
