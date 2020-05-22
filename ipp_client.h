@@ -30,7 +30,7 @@ public:
 	bool process();
 	template <typename... Args>
 	void respond(ipp_status_t status, const std::string& message_format, Args... args);
-	void respondUnsupported(ipp_attribute_t* attr);
+	void respondUnsupported(ipp_attribute_t* attr); // FIXME: naming?
 	//ipp_t* getResponse() const { return response_; };
 
 private:
@@ -51,6 +51,7 @@ private:
 	void ippGetJobs_();
 	void ippGetJobAttributes_();
 	
+	bool finishDocumentData_(std::shared_ptr<PrintJob> job);
 	bool validJobAttributes_();
 	bool validDocAttributes_();
 	bool haveDocumentData_();

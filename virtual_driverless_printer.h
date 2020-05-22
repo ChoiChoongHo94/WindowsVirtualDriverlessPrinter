@@ -11,12 +11,13 @@ typedef ULONG nfds_t;
 
 class VirtualDriverlessPrinter {
 public:
+	/* TODO
+	static const int kMaxJobs = 500;
+	static const
+	*/
 	VirtualDriverlessPrinter(const std::string& name, const int port);
 	virtual ~VirtualDriverlessPrinter();
 	void run();
-
-	// TODO: synchronized? 
-	void addJob(int job_id, PrintJob* job);
 
 	std::string getName() { return name_; };
 	std::string getHostname() { return hostname_; };
@@ -26,7 +27,11 @@ public:
 	time_t getStartTime() { return start_time_; };
 	ipp_pstate_t getState() { return state_; };
 	ipp_t* getAttributes() { return attrs_; };
-	std::unordered_map<int, PrintJob*>& getJobs() { return jobs_map_; };
+
+	// TODO: synchronized? 
+	bool addJob(std::shared_ptr<PrintJob> job);
+	std::shared_ptr<PrintJob> getJob(int job_id) const;
+	std::unordered_map<int, std::shared_ptr<PrintJob> >& getJobs() const { return jobs_; };
 
 	void setState(ipp_pstate_t state) { state_ = state; };
 
@@ -45,10 +50,12 @@ private:
 	//DNSServiceRef bonjour_service_; // bonjour service socket
 	ipp_pstate_t state_ = IPP_PSTATE_IDLE;
 	ipp_t* attrs_ = ippNew();
-	PrintJob* active_job_;
+	//PrintJob* active_job_;
 
 	// TODO: queueing
-	std::unordered_map<int, PrintJob* > jobs_map_;
+	//std::priority_queue<std::shared_ptr<PrintJob>> spooling_q;
+
+	std::unordered_map<int, std::shared_ptr<PrintJob> > jobs_;
 	// TODO: read-write lock
 
 };

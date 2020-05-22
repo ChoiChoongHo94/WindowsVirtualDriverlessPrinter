@@ -11,17 +11,21 @@ public:
 	PrintJob(ipp_t* request, VirtualDriverlessPrinter* vdp);
 	virtual ~PrintJob();
 	void* process();
-	int createJobFile(); // create the job file and return the fd
+	void abort();
+	int createJobFile(); // create(open) a job file and return the fd
 	int closeJobFile();
 	int unlinkJobFile();
-	ipp_jstate_t getState() { return state_; };
-	ipp_t* getAttributes() { return attrs_; };
-	int getFd() { return fd_; };
-	std::string getFilename() { return filename_; };
-	std::string getUsername() { return username_; };
+	ipp_jstate_t getState() const { return state_; };
+	ipp_t* getAttributes() const { return attrs_; };
+	int getId() const { return id_; };
+	int getFd() const { return fd_; };
+	std::string getFilepath() const { return filepath_; };
+	std::string getUsername() const { return username_; };
 
 	void setState(ipp_jstate_t state);
 	//void setFd(int fd);
+	//void setFilepath(const std::string& filepath);
+	//void setUsername(const std::string& username);
 	void setProcessingTime(time_t time);
 	void setCompletedTime(time_t time);
 
@@ -33,7 +37,7 @@ private:
 	ipp_jstate_t state_ = IPP_JSTATE_HELD; // job state
 	std::string uri_; // job uri
 	std::string name_; // job name
-	std::string filename_;
+	std::string filepath_;
 	std::string username_;
 	std::string format_ = "application/pdf";
 	std::string impressions_;

@@ -95,7 +95,7 @@ void VirtualDriverlessPrinter::run() {
 
 	unsigned thread_id = -1;
 	//HANDLE threads[MAX_THREADS];
-	std::cerr << "the printer \"" << name_ << "\" is start to run!" << '\n';
+	std::cerr << "The printer \"" << name_ << "\" is start to run!" << '\n';
 	for (;;) {
 		if (poll(polldata, (nfds_t)num_fds, timeout) < 0 && errno != EINTR) {
 			std::cerr << "WSAPoll failed <- " << WSAGetLastError() << '\n';
@@ -122,11 +122,25 @@ void VirtualDriverlessPrinter::run() {
 		}
 		*/
 	}
-	std::cerr << "the printer \"" << name_ << "\" is end to run!" << '\n';
+	std::cerr << "The printer \"" << name_ << "\" is end to run!" << '\n';
 }
 
-void VirtualDriverlessPrinter::addJob(int job_id, PrintJob* job) {
-	jobs_map_.insert(std::make_pair(job_id, job));
+bool VirtualDriverlessPrinter::addJob(std::shared_ptr<PrintJob> job) {
+	int job_id = job->getId();
+	assert(job_id > -1);
+	//TODO: rw lock
+	jobs_.insert(std::make_pair(job_id , job));
+	//TODO: kMaxJobs check
+	//TODO: rw unlock
+	return true;
+}
+
+std::shared_ptr<PrintJob> VirtualDriverlessPrinter::getJob(int job_id) const {
+	auto it = jobs_.find(job_id);
+	if (it != jobs_.end()) {
+		return it->second;
+	}
+	return nullptr;
 }
 
 static unsigned WINAPI ProcessIPPThread(LPVOID ipp_client) {

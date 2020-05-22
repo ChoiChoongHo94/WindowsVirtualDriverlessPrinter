@@ -6,6 +6,7 @@
 #include <iostream>
 
 namespace Util {
+	//TODO: wrap cups_array_t to std::vector
 	void copy_attributes(ipp_t* dst, ipp_t* src, cups_array_t* ra, ipp_tag_t group_tag, int quickcopy) {
 		GroupFilter filter = { ra, IPP_TAG_ZERO };
 		ippCopyAttributes(dst, src, quickcopy, (ipp_copycb_t)group_filter_cb, &filter);
@@ -18,48 +19,48 @@ namespace Util {
 		if (!ra || cupsArrayFind(ra, (void*)"job-state")) {
 			ippAddInteger(dst, IPP_TAG_JOB, IPP_TAG_ENUM, "job-state", (int)job->getState());
 		}
-		
+
 		if (!ra || cupsArrayFind(ra, (void*)"job-state-reasons")) {
 			switch (job->getState()) {
-				case IPP_JSTATE_PENDING:
+			case IPP_JSTATE_PENDING:
+				ippAddString(dst, IPP_TAG_JOB, IPP_CONST_TAG(IPP_TAG_KEYWORD), "job-state-reasons",
+					NULL, "none");
+				break;
+			case IPP_JSTATE_HELD:
+				// TODO: job-hold-until
+				if (job->getFd()) {
 					ippAddString(dst, IPP_TAG_JOB, IPP_CONST_TAG(IPP_TAG_KEYWORD), "job-state-reasons",
-						NULL, "none");
-					break;
-				case IPP_JSTATE_HELD:
-					// TODO: job-hold-until
-					if (job->getFd()) {
-						ippAddString(dst, IPP_TAG_JOB, IPP_CONST_TAG(IPP_TAG_KEYWORD), "job-state-reasons",
-							NULL, "job-incoming");
-					}
-					else {
-						ippAddString(dst, IPP_TAG_JOB, IPP_CONST_TAG(IPP_TAG_KEYWORD), "job-state-reasons",
-							NULL, "job-data-insufficient");
-					}
-					break;
-				case IPP_JSTATE_PROCESSING:
-					// TODO: job->cancel
+						NULL, "job-incoming");
+				}
+				else {
 					ippAddString(dst, IPP_TAG_JOB, IPP_CONST_TAG(IPP_TAG_KEYWORD), "job-state-reasons",
-						NULL, "job-printing");
-					break;
-				case IPP_JSTATE_STOPPED:
-					ippAddString(dst, IPP_TAG_JOB, IPP_CONST_TAG(IPP_TAG_KEYWORD), "job-state-reasons",
-						NULL, "job-stopped");
-					break;
-				case IPP_JSTATE_CANCELED:
-					ippAddString(dst, IPP_TAG_JOB, IPP_CONST_TAG(IPP_TAG_KEYWORD), "job-state-reasons",
-						NULL, "job-canceled-by-user");
-					break;
-				case IPP_JSTATE_ABORTED:
-					ippAddString(dst, IPP_TAG_JOB, IPP_CONST_TAG(IPP_TAG_KEYWORD), "job-state-reasons",
-						NULL, "aborted-by-system");
-					break;
-				case IPP_JSTATE_COMPLETED:
-					ippAddString(dst, IPP_TAG_JOB, IPP_CONST_TAG(IPP_TAG_KEYWORD), "job-state-reasons",
-						NULL, "job-completed-successfully");
-					break;
-				default:
-					std::cerr << "Aborted!!" << '\n';
-					abort();
+						NULL, "job-data-insufficient");
+				}
+				break;
+			case IPP_JSTATE_PROCESSING:
+				// TODO: job->cancel
+				ippAddString(dst, IPP_TAG_JOB, IPP_CONST_TAG(IPP_TAG_KEYWORD), "job-state-reasons",
+					NULL, "job-printing");
+				break;
+			case IPP_JSTATE_STOPPED:
+				ippAddString(dst, IPP_TAG_JOB, IPP_CONST_TAG(IPP_TAG_KEYWORD), "job-state-reasons",
+					NULL, "job-stopped");
+				break;
+			case IPP_JSTATE_CANCELED:
+				ippAddString(dst, IPP_TAG_JOB, IPP_CONST_TAG(IPP_TAG_KEYWORD), "job-state-reasons",
+					NULL, "job-canceled-by-user");
+				break;
+			case IPP_JSTATE_ABORTED:
+				ippAddString(dst, IPP_TAG_JOB, IPP_CONST_TAG(IPP_TAG_KEYWORD), "job-state-reasons",
+					NULL, "aborted-by-system");
+				break;
+			case IPP_JSTATE_COMPLETED:
+				ippAddString(dst, IPP_TAG_JOB, IPP_CONST_TAG(IPP_TAG_KEYWORD), "job-state-reasons",
+					NULL, "job-completed-successfully");
+				break;
+			default:
+				std::cerr << "Aborted!!" << '\n';
+				abort();
 			}
 
 			// 이렇게 한번에 하면, attribute의 value로 쓰레기값이 들어감. 여유있을 때 원인분석 ㄱㄱ
@@ -81,7 +82,16 @@ namespace Util {
 			job-printer-up-time
 			job-state-message
 		*/
+		return;
+	}
 
+	void copy_job_attributes(ipp_t* dst, PrintJob* job, const std::vector<std::string>& rv) {
+		cups_array_t* ra = cupsArrayNew((cups_array_func_t)strcmp, NULL);
+		for (auto element : rv) {
+			cupsArrayAdd(ra, (void*)element.c_str());
+		}
+		copy_job_attributes(dst, job, ra);
+		cupsArrayDelete(ra);
 		return;
 	}
 

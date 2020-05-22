@@ -118,6 +118,11 @@ void* PrintJob::process() {
 	return NULL;
 }
 
+void PrintJob::abort() {
+	setState(IPP_JSTATE_ABORTED);
+	setCompletedTime(time(NULL));
+}
+
 int PrintJob::createJobFile() {
 	const char* tmp_job_name = ippGetString(ippFindAttribute(attrs_, "job-name", IPP_TAG_NAME), 0, NULL);
 	std::string job_name;
@@ -127,10 +132,10 @@ int PrintJob::createJobFile() {
 	else {
 		job_name = tmp_job_name;
 	}
-	filename_ = vdp_->getSpoolDir() + "/" + std::to_string(id_) + "-" + job_name;
+	filepath_ = vdp_->getSpoolDir() + "/" + std::to_string(id_) + "-" + job_name;
 
 	// ippsample issue: https://github.com/istopwg/ippsample/issues/181
-	return (fd_ = open(filename_.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0666));
+	return (fd_ = open(filepath_.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0666));
 }
 
 int PrintJob::closeJobFile() {
@@ -140,7 +145,7 @@ int PrintJob::closeJobFile() {
 }
 
 int PrintJob::unlinkJobFile() {
-	return unlink(filename_.c_str()); // Success: 0, Fail: -1
+	return unlink(filepath_.c_str()); // Success: 0, Fail: -1
 }
 
 void PrintJob::setState(ipp_jstate_t state) {

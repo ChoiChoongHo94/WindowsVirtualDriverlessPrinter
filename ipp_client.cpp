@@ -9,14 +9,12 @@
 #include "my_definitions.h"
 #include "my_util.h"
 
-static std::shared_ptr<PrintJob> create_job(ipp_t* reqeust, VirtualDriverlessPrinter* vdp);
-
 namespace TestPrint {
 	void printCupsArray(cups_array_t* ca) {
 		std::cerr << "============================" << __FUNCTION__ << "============================" << '\n';
 		std::cerr << "Array count: " << cupsArrayCount(ca) << '\n';
 		for (auto element = cupsArrayFirst(ca); element; element = cupsArrayNext(ca)) {
-			std::cout << (char*)element << '\n';
+			std::cerr << (char*)element << '\n';
 		}
 		std::cerr << "=================================================================================" << '\n';
 	}
@@ -481,7 +479,7 @@ void IPPClient::respondUnsupported(ipp_attribute_t* attr) {
 }
 
 void IPPClient::ippGetPrinterAttributes_() {
-	std::cout << "[" << __FUNCTION__ << "] Enter" << '\n';
+	std::cerr << "[" << __FUNCTION__ << "] Enter" << '\n';
 	TestPrint::printIPPAttrs(request_);
 	cups_array_t* ra = ippCreateRequestedArray(request_);
 	TestPrint::printCupsArray(ra);
@@ -510,11 +508,11 @@ void IPPClient::ippGetPrinterAttributes_() {
 
 	//cupsArrayDelete(ra);
 	TestPrint::printIPPAttrs(response_);
-	std::cout << "[" << __FUNCTION__ << "] Exit" << '\n';
+	std::cerr << "[" << __FUNCTION__ << "] Exit" << '\n';
 }
 
 void IPPClient::ippPrintJob_() {
-	std::cout << "[" << __FUNCTION__ << "] Enter" << '\n';
+	std::cerr << "[" << __FUNCTION__ << "] Enter" << '\n';
 	if (!validJobAttributes_()) {
 		// httpflush, flush_document_data
 		httpFlush(http_client_->getConnection());
@@ -526,110 +524,101 @@ void IPPClient::ippPrintJob_() {
 		return;
 	}
 
-	// 필요 없을듯
-	if ((job_ = std::make_shared<PrintJob>(request_, vdp_)) == nullptr) {
+	auto job = std::make_shared<PrintJob>(request_, vdp_);
+	if (job == nullptr) {
 		respond(IPP_STATUS_ERROR_BUSY, "Currently printing another job!");
 		return;
 	}
 
-	size_t bytes = 0;
-	char buf[4096];
-	char err_buf[1024];
-	int job_file_fd = -1;
-	cups_array_t* ra = nullptr;
-	if ((job_file_fd = job_->createJobFile()) < 0) {
-		strerror_s(err_buf, sizeof(err_buf), errno);
-		respond(IPP_STATUS_ERROR_INTERNAL, "Unable to create print file: %s!", err_buf);
-		goto ABORT_JOB;
+	if (finishDocumentData_(job)) {
+		//TODO: create 'process_job' thread
+		job_->process();
+
+		respond(IPP_STATUS_OK, "");
+
+		std::cerr << "[" << __FUNCTION__ << "] Exit, Success" << '\n';
 	}
-	std::cerr << "Created job file '" << job_->getFilename() << "'" << '\n';
-	
-	while ((bytes = httpRead2(http_client_->getConnection(), buf, sizeof(buf))) > 0) {
-		if (write(job_file_fd, buf, (size_t)bytes) < bytes) {
-			/* write error */
-			int err = errno;
-			job_->closeJobFile();
-			job_->unlinkJobFile();
-			strerror_s(err_buf, sizeof(err_buf), err);
-			respond(IPP_STATUS_ERROR_INTERNAL, "Unable to write print file: %s!", err_buf);
-			goto ABORT_JOB;
-		}
+	else {
+		// respond(...) is called in the finishDocumentData_()
+		std::cerr << "[" << __FUNCTION__ << "] Exit, Failed" << '\n';
 	}
-	
-	if (bytes < 0) {
-		/* error while reading the print data */
-		job_->closeJobFile();
-		job_->unlinkJobFile();
-		respond(IPP_STATUS_ERROR_INTERNAL, "Unable to read print file!");
-		goto ABORT_JOB;
-	}
-	
-	if (job_->closeJobFile()) {
-		int err = errno;
-		job_->unlinkJobFile();
-		respond(IPP_STATUS_ERROR_INTERNAL, "Unable to write print file: %s", strerror(err));
-		goto ABORT_JOB;
-	}
-	
-	job_->setState(IPP_JSTATE_PENDING);
-	
-	//TODO: create 'process_job' thread
-	job_->process();
-	
-	respond(IPP_STATUS_OK, "");
-	
-	ra = cupsArrayNew((cups_array_func_t)strcmp, NULL);
-	cupsArrayAdd(ra, (void*)"job-id");
-	cupsArrayAdd(ra, (void*)"job-state");
-	//cupsArrayAdd(ra, "job-state-message");
-	cupsArrayAdd(ra, (void*)"job-state-reasons");
-	cupsArrayAdd(ra, (void*)"job-uri");
-	
-	Util::copy_job_attributes(response_, job_.get(), ra);
-	TestPrint::printIPPAttrs(response_);
-	cupsArrayDelete(ra);
-	std::cout << "[" << __FUNCTION__ << "] Exit, Success" << '\n';
-	return;
-	
-	ABORT_JOB:
-	job_->setState(IPP_JSTATE_ABORTED);
-	job_->setCompletedTime(time(NULL));
-	
-	ra = cupsArrayNew((cups_array_func_t)strcmp, NULL);
-	cupsArrayAdd(ra, (void*)"job-id");
-	cupsArrayAdd(ra, (void*)"job-state");
-	cupsArrayAdd(ra, (void*)"job-state-reasons");
-	cupsArrayAdd(ra, (void*)"job-uri");
-	Util::copy_job_attributes(response_, job_.get(), ra);
-	TestPrint::printIPPAttrs(response_);
-	cupsArrayDelete(ra);
-	std::cout << "[" << __FUNCTION__ << "] Exit, Aborted" << '\n';
+
+	std::vector<std::string> rv = { "job-id", "job-state", "job-state-reasons", "job-uri" };
+	Util::copy_job_attributes(response_, job_.get(), rv);
 	return;
 };
 
-// TODO: 리턴타입 검토
-PrintJob* IPPClient::ippCreateJob_() {
-	std::cout << "[" << __FUNCTION__ << "] Enter" << '\n';
+void IPPClient::ippCreateJob_() {
+	std::cerr << "[" << __FUNCTION__ << "] Enter" << '\n';
 
 	if (haveDocumentData_()) {
 		httpFlush(http_client_->getConnection());
 		respond(IPP_STATUS_ERROR_BAD_REQUEST, "Document data must not be supplied from this IPP message!");
-		return nullptr;
+		return;
 	}
 
 	if (!validJobAttributes_()) {
-		return nullptr;
+		return;
+	}
+
+	auto job = std::make_shared<PrintJob>(request_, vdp_);
+	if (!vdp_->addJob(job)) {
+		respond(IPP_STATUS_ERROR_BUSY, "Currently the printer is busy..");
+	}
+
+	respond(IPP_STATUS_OK, "");
+	std::cerr << "[" << __FUNCTION__ << "] Exit" << '\n';
+};
+
+void IPPClient::ippSendDocument_() {
+	std::cerr << "[" << __FUNCTION__ << "] Enter" << '\n';
+
+	/* find job */
+	ipp_attribute_t* attr = ippFindAttribute(request_, "job-id", IPP_TAG_INTEGER); assert(attr != NULL);
+	int job_id = ippGetInteger(attr, 0);
+	auto job = vdp_->getJob(job_id);
+	if (job == nullptr) {
+		httpFlush(http_client_->getConnection());
+		respond(IPP_STATUS_ERROR_NOT_FOUND, "The job does not exist!");
+		return;
+	}
+
+	bool have_data = haveDocumentData_();
+	if ((!job->getFilepath().empty() || job->getFd() >= 0) && have_data) {
+		httpFlush(http_client_->getConnection());
+		respond(IPP_STATUS_ERROR_MULTIPLE_JOBS_NOT_SUPPORTED, "Multiple document jobs are not supported!");
+		return;
+	}
+	else if (job->getState >= IPP_JSTATE_HELD && have_data) {
+		httpFlush(http_client_->getConnection());
+		respond(IPP_STATUS_ERROR_NOT_POSSIBLE, "The job is not in a pending state!");
+		return;
 	}
 
 	
-}
+	if ((attr = ippFindAttribute(request_, "last-document", IPP_TAG_OPERATION)) == NULL) {
+		httpFlush(http_client_->getConnection());
+		respond(IPP_STATUS_ERROR_BAD_REQUEST, "Missing requeired 'last-document' attribute!");
+		return;
+	}
+	else if (ippGetValueTag(attr) != IPP_TAG_BOOLEAN || ippGetCount(attr) != 1) {
+		httpFlush(http_client_->getConnection());
+		respondUnsupported(attr);
+		return;
+	}
 
-void IPPClient::ippSendDocument_() {
+	if (have_data && !validDocAttributes_()) {
+		httpFlush(http_client_->getConnection());
+		return;
+	}
+	 
+	// TODO
 
-}
+	std::cerr << "[" << __FUNCTION__ << "] Exit" << '\n';
+};
 
 void IPPClient::ippGetJobs_() {
-	std::cout << "[" << __FUNCTION__ << "] Enter" << '\n';
+	std::cerr << "[" << __FUNCTION__ << "] Enter" << '\n';
 	ipp_attribute_t* attr = nullptr;
 	cups_array_t* ra = nullptr;
 	int job_comparison;
@@ -710,7 +699,7 @@ void IPPClient::ippGetJobs_() {
 	cupsArrayDelete(ra);
 	//TODO: rw unlock
 
-	std::cout << "[" << __FUNCTION__ << "] Exit, Success" << '\n';
+	std::cerr << "[" << __FUNCTION__ << "] Exit, Success" << '\n';
 }
 
 void IPPClient::ippGetJobAttributes_() {
@@ -733,13 +722,62 @@ void IPPClient::ippGetJobAttributes_() {
 		respond(IPP_STATUS_ERROR_NOT_FOUND, "job-id=%d Job not found!", job_id);
 		return;
 	}
-	PrintJob* job = it->second;
+	auto job = it->second;
 	//TODO: rw unlock
 
 	respond(IPP_STATUS_OK, "");
 	cups_array_t* ra = ippCreateRequestedArray(request_);
-	Util::copy_job_attributes(response_, job, ra);
+	Util::copy_job_attributes(response_, job.get(), ra);
 	cupsArrayDelete(ra);
+}
+
+bool IPPClient::finishDocumentData_(std::shared_ptr<PrintJob> job) {
+	size_t bytes = 0;
+	char buf[4096];
+	char err_buf[1024];
+	int job_file_fd = -1;
+	if ((job_file_fd = job->createJobFile()) < 0) {
+		strerror_s(err_buf, sizeof(err_buf), errno);
+		respond(IPP_STATUS_ERROR_INTERNAL, "Unable to create print file: %s!", err_buf);
+		goto ABORT_JOB;
+	}
+	std::cerr << "Created job file '" << job_->getFilepath() << "'" << '\n';
+
+	while ((bytes = httpRead2(http_client_->getConnection(), buf, sizeof(buf))) > 0) {
+		if (write(job_file_fd, buf, (size_t)bytes) < bytes) {
+			/* write error */
+			int err = errno;
+			job_->closeJobFile();
+			job_->unlinkJobFile();
+			strerror_s(err_buf, sizeof(err_buf), err);
+			respond(IPP_STATUS_ERROR_INTERNAL, "Unable to write print file: %s!", err_buf);
+			goto ABORT_JOB;
+		}
+	}
+
+	if (bytes < 0) {
+		/* error while reading the print data */
+		job->closeJobFile();
+		job->unlinkJobFile();
+		respond(IPP_STATUS_ERROR_INTERNAL, "Unable to read print file!");
+		goto ABORT_JOB;
+	}
+
+	if (job->closeJobFile()) {
+		int err = errno;
+		job->unlinkJobFile();
+		respond(IPP_STATUS_ERROR_INTERNAL, "Unable to write print file: %s", strerror(err));
+		goto ABORT_JOB;
+	}
+
+	job->setState(IPP_JSTATE_PENDING);
+	std::cerr << "[" << __FUNCTION__ << "] Exit, Successfully received the document data" << '\n';
+	return true;
+
+ABORT_JOB:
+	job->abort();
+	std::cerr << "[" << __FUNCTION__ << "] Exit, Job Aborted" << '\n';
+	return false;
 }
 
 bool IPPClient::validJobAttributes_() {
@@ -764,17 +802,66 @@ bool IPPClient::validJobAttributes_() {
 	return true;
 }
 
-// TODO: static function?
 bool IPPClient::validDocAttributes_() {
-	/*
-	"compression"
-	"document-format"
-	"document-name"
-	*/
-	return true;
+	bool ret = true;
+	ipp_op_t op = ippGetOperation(request_);
+	const std::string op_name = ippOpString(op);
+	ipp_t* printer_attrs = vdp_->getAttributes();
+	ipp_attribute_t* attr = nullptr;
+	ipp_attribute_t* supported_attrs = nullptr;
+	
+	/* compression */
+	if ((attr = ippFindAttribute(request_, "compression", IPP_TAG_ZERO)) != NULL) {
+		std::string compression = std::string(ippGetString(attr, 0, NULL)); assert(!compression.empty());
+		supported_attrs = ippFindAttribute(printer_attrs, "compression-supported", IPP_TAG_KEYWORD);
+
+		if (ippGetCount(attr) != 1 || ippGetValueTag(attr) != IPP_TAG_KEYWORD ||
+			ippGetGroupTag(attr) != IPP_TAG_OPERATION ||
+			(op != IPP_OP_PRINT_JOB && op != IPP_OP_SEND_DOCUMENT && op != IPP_OP_VALIDATE_JOB) ||
+			!ippContainsString(supported_attrs, compression.c_str())) {
+			respondUnsupported(attr);
+			ret = false;
+		}
+		else {
+			std::cerr << http_client_->getHostname << " " << op_name << " compression='" << compression << "'\n";
+			ippAddString(request_, IPP_TAG_JOB, IPP_TAG_KEYWORD, "compression-supplied", NULL, compression.c_str()); // 무슨 역할? -> TODO: RFC8011
+			
+			if (compression != "none") {
+				httpSetField(http_client_->getConnection(), HTTP_FIELD_CONTENT_ENCODING, compression.c_str());
+			}
+		}
+	}
+
+	/* document-format */
+	std::string format;
+	if ((attr = ippFindAttribute(request_, "document-format", IPP_TAG_ZERO)) != NULL) {
+		format = std::string(ippGetString(attr, 0, NULL)); assert(!format.empty());
+		supported_attrs = ippFindAttribute(printer_attrs, "document-format-supported", IPP_TAG_MIMETYPE);
+		if (ippGetCount(attr) != 1 || ippGetValueTag(attr) != IPP_TAG_MIMETYPE ||
+			ippGetGroupTag(attr) != IPP_TAG_OPERATION ||
+			!ippContainsString(supported_attrs, format.c_str())) {
+			respondUnsupported(attr);
+			ret = false;
+		}
+		else {
+			std::cerr << http_client_->getHostname << " " << op_name << " document-format='" << format << "'\n";
+			ippAddString(request_, IPP_TAG_JOB, IPP_TAG_MIMETYPE, "document-format-supplied", NULL, format.c_str());
+		}
+	}
+	else {
+		// TODO: PDF 인지 체크하는 과정 필요한가?
+		format = std::string( ippGetString(ippFindAttribute(printer_attrs, "document-format-default", IPP_TAG_MIMETYPE), 0, NULL) ); assert(!format.empty());
+		attr = ippAddString(request_, IPP_TAG_OPERATION, IPP_TAG_MIMETYPE, "document-format", NULL, format.c_str());
+	}
+
+	/* documnet-name */
+	if ((attr = ippFindAttribute(request_, "document-name", IPP_TAG_NAME)) != NULL) {
+		ippAddString(request_, IPP_TAG_JOB, IPP_TAG_NAME, "document-name-supplied", NULL, ippGetString(attr, 0, NULL));
+	}
+
+	return ret;
 };
 
-// TODO: static function?
 bool IPPClient::haveDocumentData_() {
 	char temp;
 	http_t* http = http_client_->getConnection();
@@ -785,9 +872,3 @@ bool IPPClient::haveDocumentData_() {
 		return (httpPeek(http, &temp, 1) > 0);
 	}
 }
-
-static std::shared_ptr<PrintJob> create_job(ipp_t* request, VirtualDriverlessPrinter* vdp) {
-	auto job = std::make_shared<PrintJob>(request, vdp);
-
-}
-
