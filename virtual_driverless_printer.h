@@ -4,6 +4,7 @@
 #include <cups/ipp.h>
 #include <dns_sd.h>
 #include <unordered_map>
+#include <memory>
 #include "print_job.h"
 
 #define poll WSAPoll
@@ -31,7 +32,7 @@ public:
 	// TODO: synchronized? 
 	bool addJob(std::shared_ptr<PrintJob> job);
 	std::shared_ptr<PrintJob> getJob(int job_id) const;
-	std::unordered_map<int, std::shared_ptr<PrintJob> >& getJobs() const { return jobs_; };
+	const std::unordered_map<int, std::shared_ptr<PrintJob> >& getJobs() const { return std::ref(jobs_); };
 
 	void setState(ipp_pstate_t state) { state_ = state; };
 

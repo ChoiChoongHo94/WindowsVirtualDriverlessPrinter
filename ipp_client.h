@@ -42,7 +42,7 @@ private:
 	//std::string uri_;
 	//std::string hostname_;
 	VirtualDriverlessPrinter* vdp_;
-	std::shared_ptr<PrintJob> job_ = nullptr;
+	//std::shared_ptr<PrintJob> job_ = nullptr;
 
 	void ippGetPrinterAttributes_();
 	void ippPrintJob_();
@@ -55,6 +55,4 @@ private:
 	bool validJobAttributes_();
 	bool validDocAttributes_();
 	bool haveDocumentData_();
-
-	
 };

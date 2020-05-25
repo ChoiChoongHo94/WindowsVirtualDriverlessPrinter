@@ -2,6 +2,7 @@
 #include <cups/ipp.h>
 #include <cassert>
 #include <vector>
+#include <string>
 #include "my_definitions.h"
 
 class PrintJob;

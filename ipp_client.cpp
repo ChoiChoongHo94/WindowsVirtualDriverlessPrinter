@@ -60,12 +60,15 @@ IPPClient::IPPClient(VirtualDriverlessPrinter* vdp, int sock_fd) : vdp_(vdp) {
 }
 
 IPPClient::HTTPClient::~HTTPClient() {
-	std::cerr << "[HTTPClient(" << this << ") dtor]" << '\n';
+	std::cerr << "[HTTPClient(" << this << ") dtor] Closing connection from '" << hostname_ << "'\n";
+	httpFlushWrite(http_);
 	httpClose(http_);
 }
 
 IPPClient::~IPPClient() {
 	std::cerr << "[IPPClient(" << this << ") dtor]" << '\n';
+	if (request_ != nullptr) ippDelete(request_);
+	if (response_ != nullptr) ippDelete(response_);
 }
 
 bool IPPClient::HTTPClient::process(ipp_t*& ipp_request) {
@@ -91,14 +94,16 @@ bool IPPClient::HTTPClient::process(ipp_t*& ipp_request) {
 
 	// 1)
 	while ((state = httpReadRequest(http_, uri, sizeof(uri))) == HTTP_STATE_WAITING)
-		sleep(1);
+		Sleep(1);
 	 
 	// 2)
 	if (state == HTTP_STATE_ERROR) {
 		if (httpError(http_) == EPIPE) { // error case of being set to ignoring any signals when the socket or pipe is disconnected
+			//respond(HTTP_STATUS_BAD_REQUEST, "", "", 0, nullptr);
 			std::cerr << "'" << hostname_ << "' client closed connection!" << '\n';
 		}
 		else {
+			//respond(HTTP_STATUS_BAD_REQUEST, NULL, NULL, 0, nullptr);
 			std::cerr << "'" << hostname_ << "' bad request line! <- " << httpError(http_) << '\n';
 		}
 		ret = false; goto EXIT;
@@ -513,7 +518,7 @@ void IPPClient::ippGetPrinterAttributes_() {
 
 void IPPClient::ippPrintJob_() {
 	std::cerr << "[" << __FUNCTION__ << "] Enter" << '\n';
-	if (!validJobAttributes_()) {
+	if (!validJobAttributes_() || !validDocAttributes_()) {
 		// httpflush, flush_document_data
 		httpFlush(http_client_->getConnection());
 		return;
@@ -532,7 +537,7 @@ void IPPClient::ippPrintJob_() {
 
 	if (finishDocumentData_(job)) {
 		//TODO: create 'process_job' thread
-		job_->process();
+		job->process();
 
 		respond(IPP_STATUS_OK, "");
 
@@ -544,7 +549,7 @@ void IPPClient::ippPrintJob_() {
 	}
 
 	std::vector<std::string> rv = { "job-id", "job-state", "job-state-reasons", "job-uri" };
-	Util::copy_job_attributes(response_, job_.get(), rv);
+	Util::copy_job_attributes(response_, job.get(), rv);
 	return;
 };
 
@@ -557,7 +562,7 @@ void IPPClient::ippCreateJob_() {
 		return;
 	}
 
-	if (!validJobAttributes_()) {
+	if (!validJobAttributes_() || !validDocAttributes_()) {
 		return;
 	}
 
@@ -589,7 +594,7 @@ void IPPClient::ippSendDocument_() {
 		respond(IPP_STATUS_ERROR_MULTIPLE_JOBS_NOT_SUPPORTED, "Multiple document jobs are not supported!");
 		return;
 	}
-	else if (job->getState >= IPP_JSTATE_HELD && have_data) {
+	else if (job->getState() >= IPP_JSTATE_HELD && have_data) {
 		httpFlush(http_client_->getConnection());
 		respond(IPP_STATUS_ERROR_NOT_POSSIBLE, "The job is not in a pending state!");
 		return;
@@ -679,7 +684,7 @@ void IPPClient::ippGetJobs_() {
 	int count = 0;
 	for (auto element : vdp_->getJobs()) {
 		int job_id = element.first;
-		PrintJob* job = element.second;
+		auto job = element.second;
 		const std::string& job_username = job->getUsername();
 		if ((job_comparison < 0 && job->getState() > job_state_criteria) ||
 			(job_comparison == 0 && job->getState() != job_state_criteria) ||
@@ -694,7 +699,7 @@ void IPPClient::ippGetJobs_() {
 		}
 
 		count++;
-		Util::copy_job_attributes(response_, job, ra);
+		Util::copy_job_attributes(response_, job.get(), ra);
 	}
 	cupsArrayDelete(ra);
 	//TODO: rw unlock
@@ -703,6 +708,7 @@ void IPPClient::ippGetJobs_() {
 }
 
 void IPPClient::ippGetJobAttributes_() {
+	std::cerr << "[" << __FUNCTION__ << "] Enter" << '\n';
 	ipp_attribute_t* attr = nullptr;
 	int job_id = -1;
 	
@@ -729,9 +735,11 @@ void IPPClient::ippGetJobAttributes_() {
 	cups_array_t* ra = ippCreateRequestedArray(request_);
 	Util::copy_job_attributes(response_, job.get(), ra);
 	cupsArrayDelete(ra);
+	std::cerr << "[" << __FUNCTION__ << "] Exit" << '\n';
 }
 
 bool IPPClient::finishDocumentData_(std::shared_ptr<PrintJob> job) {
+	std::cerr << "[" << __FUNCTION__ << "] Enter" << '\n';
 	size_t bytes = 0;
 	char buf[4096];
 	char err_buf[1024];
@@ -741,14 +749,14 @@ bool IPPClient::finishDocumentData_(std::shared_ptr<PrintJob> job) {
 		respond(IPP_STATUS_ERROR_INTERNAL, "Unable to create print file: %s!", err_buf);
 		goto ABORT_JOB;
 	}
-	std::cerr << "Created job file '" << job_->getFilepath() << "'" << '\n';
+	std::cerr << "Created job file '" << job->getFilepath() << "'" << '\n';
 
 	while ((bytes = httpRead2(http_client_->getConnection(), buf, sizeof(buf))) > 0) {
 		if (write(job_file_fd, buf, (size_t)bytes) < bytes) {
 			/* write error */
 			int err = errno;
-			job_->closeJobFile();
-			job_->unlinkJobFile();
+			job->closeJobFile();
+			job->unlinkJobFile();
 			strerror_s(err_buf, sizeof(err_buf), err);
 			respond(IPP_STATUS_ERROR_INTERNAL, "Unable to write print file: %s!", err_buf);
 			goto ABORT_JOB;
@@ -781,28 +789,142 @@ ABORT_JOB:
 }
 
 bool IPPClient::validJobAttributes_() {
-	TestPrint::printIPPAttrs(request_);
+	std::cerr << "[" << __FUNCTION__ << "] Enter" << '\n';
+	//TestPrint::printIPPAttrs(request_);
 	/*
-	validDocAttributes_()
-	"copies"
+	기본적으로
+	1) Attribute가 포함한 값의 개수
+	2) Value Tag
+	3) 값의 범위
+	등을 검사
+
+	validDocAttributes_()??
+
+	TODO list:
 	"ipp-attribute-fidelity"
-	"job-hold-until"
+	"job-hold-until" -> no-hold, indefinite (until a client performs a Release-Job), day-time, ...
 	"job-impressions"
-	"job-name"
-	"job-sheets"
-	"media"
-	"page-ranges"
-	"print-quality"
-	"orientation-requested"
-	"multiple-document-handling"
+	"job-sheets" -> determines which Job start/end sheet(s).
+	
 	"media-col"
-	"printer-resolution
+	"printer-resolution"
 	"sides"
+	"print-quality"
 	*/
-	return true;
+	bool ret = true; // is valid
+	ipp_attribute_t* attr = nullptr;
+	ipp_attribute_t* supported_attrs = nullptr;
+
+	// TODO, FIXME: 윈도우에 어떻게 매핑시킬 것인지 조사 필요할 듯
+	if ((attr = ippFindAttribute(request_, "multiple-document-handling", IPP_TAG_ZERO)) != NULL) {
+		const std::string& tmp_value = std::string(ippGetString(attr, 0, NULL));
+		if (ippGetCount(attr) != 1 || ippGetValueTag(attr) != IPP_TAG_KEYWORD ||
+			(tmp_value == "separate-documents-uncollated-copies" && tmp_value == "separate-documents-collated-copies")) {
+			respondUnsupported(attr);
+			ret = false;
+		}
+	}
+
+	if ((attr = ippFindAttribute(request_, "copies", IPP_TAG_ZERO)) != NULL) {
+		if (ippGetCount(attr) != 1 || ippGetValueTag(attr) != IPP_TAG_INTEGER ||
+			ippGetInteger(attr, 0) < 1 || ippGetInteger(attr, 0) > 500) {
+			respondUnsupported(attr);
+			ret = false;
+		}
+	}
+
+	// TODO: 프린터 장치에 의존적인 부분인거 같음(양면인쇄 지원 여부).
+	if ((attr = ippFindAttribute(request_, "sides", IPP_TAG_ZERO)) != NULL) {
+		const std::string& sides = std::string(ippGetString(attr, 0, NULL));
+		if (ippGetCount(attr) != 1 || ippGetValueTag(attr) != IPP_TAG_KEYWORD) {
+			respondUnsupported(attr);
+			ret = false;
+		}
+		else if ((supported_attrs = ippFindAttribute(vdp_->getAttributes(), "side-supported", IPP_TAG_KEYWORD)) == NULL ||
+			(supported_attrs != NULL && !ippContainsString(supported_attrs, sides.c_str()))) {
+			respondUnsupported(attr);
+			ret = false;
+		}
+	}
+
+	// already processed(filtered) by the 'pdftopdf' filter on CUPS(TOS)
+	if ((attr = ippFindAttribute(request_, "orientation-requested", IPP_TAG_ZERO)) != NULL ||
+		(attr = ippFindAttribute(request_, "page-ranges", IPP_TAG_ZERO)) != NULL) {
+		respondUnsupported(attr);
+		ret = false;
+	}
+
+	if ((attr = ippFindAttribute(request_, "job-name", IPP_TAG_ZERO)) != NULL) {
+		if (ippGetCount(attr) != 1 ||
+			(ippGetValueTag(attr) != IPP_TAG_NAME && ippGetValueTag(attr) != IPP_TAG_NAMELANG)) {
+			respondUnsupported(attr);
+			ret = false;
+		}
+	}
+
+	if ((attr = ippFindAttribute(request_, "media", IPP_TAG_ZERO)) != NULL) {
+		if (ippGetCount(attr) != 1 ||
+			(ippGetValueTag(attr) & (IPP_TAG_NAME | IPP_TAG_NAMELANG | IPP_TAG_KEYWORD)) == 0) {
+			respondUnsupported(attr);
+			ret = false;
+		}
+		else {
+			supported_attrs = ippFindAttribute(vdp_->getAttributes(), "media-supported", IPP_TAG_KEYWORD);
+			if (!ippContainsString(supported_attrs, ippGetString(attr, 0, NULL))) {
+				respondUnsupported(attr);
+				ret = false;
+			}
+		}
+	}
+
+	if ((attr = ippFindAttribute(request_, "print-quality", IPP_TAG_ZERO)) != NULL) {
+		if (ippGetCount(attr) != 1 || ippGetValueTag(attr) != IPP_TAG_ENUM ||
+			ippGetInteger(attr, 0) < IPP_QUALITY_DRAFT ||
+			ippGetInteger(attr, 0) > IPP_QUALITY_HIGH) {
+			respondUnsupported(attr);
+			ret = false;
+		}
+	}
+
+	if ((attr = ippFindAttribute(request_, "printer-resolution", IPP_TAG_ZERO)) != NULL) {
+		supported_attrs = ippFindAttribute(vdp_->getAttributes(), "printer-resolution-supported", IPP_TAG_RESOLUTION);
+		if (ippGetCount(attr) != 1 || ippGetValueTag(attr) != IPP_TAG_RESOLUTION ||
+			supported_attrs == NULL) {
+			respondUnsupported(attr);
+			ret = false;
+		}
+		else {
+			int xdpi;
+			int ydpi;
+			int supported_ydpi;
+			ipp_res_t units;
+			ipp_res_t supported_units;
+
+			xdpi = ippGetResolution(attr, 0, &ydpi, &units);
+			int supported_attrs_count = ippGetCount(supported_attrs);
+
+			bool is_supported = false;
+			for (int i = 0; i < supported_attrs_count; i++) {
+				if (xdpi == ippGetResolution(supported_attrs, i, &supported_ydpi, &supported_units) &&
+					ydpi == supported_ydpi && units == supported_units) {
+					is_supported = true;
+					break;
+				}
+			}
+
+			if (!is_supported) {
+				respondUnsupported(attr);
+				ret = false;
+			}
+		}
+	}
+
+	std::cerr << "[" << __FUNCTION__ << "] Exit, Return: " << std::boolalpha << ret << '\n';
+	return ret;
 }
 
 bool IPPClient::validDocAttributes_() {
+	std::cerr << "[" << __FUNCTION__ << "] Enter" << '\n';
 	bool ret = true;
 	ipp_op_t op = ippGetOperation(request_);
 	const std::string op_name = ippOpString(op);
@@ -823,7 +945,7 @@ bool IPPClient::validDocAttributes_() {
 			ret = false;
 		}
 		else {
-			std::cerr << http_client_->getHostname << " " << op_name << " compression='" << compression << "'\n";
+			std::cerr << http_client_->getHostname() << " " << op_name << " compression='" << compression << "'\n";
 			ippAddString(request_, IPP_TAG_JOB, IPP_TAG_KEYWORD, "compression-supplied", NULL, compression.c_str()); // 무슨 역할? -> TODO: RFC8011
 			
 			if (compression != "none") {
@@ -844,7 +966,7 @@ bool IPPClient::validDocAttributes_() {
 			ret = false;
 		}
 		else {
-			std::cerr << http_client_->getHostname << " " << op_name << " document-format='" << format << "'\n";
+			std::cerr << http_client_->getHostname() << " " << op_name << " document-format='" << format << "'\n";
 			ippAddString(request_, IPP_TAG_JOB, IPP_TAG_MIMETYPE, "document-format-supplied", NULL, format.c_str());
 		}
 	}
@@ -859,6 +981,7 @@ bool IPPClient::validDocAttributes_() {
 		ippAddString(request_, IPP_TAG_JOB, IPP_TAG_NAME, "document-name-supplied", NULL, ippGetString(attr, 0, NULL));
 	}
 
+	std::cerr << "[" << __FUNCTION__ << "] Exit, Return: " << std::boolalpha << ret << '\n';
 	return ret;
 };
 
