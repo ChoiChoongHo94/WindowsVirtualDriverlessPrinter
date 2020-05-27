@@ -2,6 +2,7 @@
 #pragma comment(lib, "ws2_32.lib")
 #include <string>
 #include <cups/ipp.h>
+#include <cups/cups.h>
 #include <dns_sd.h>
 #include <unordered_map>
 #include <memory>
@@ -19,17 +20,18 @@ public:
 	VirtualDriverlessPrinter(const std::string& name, const int port);
 	virtual ~VirtualDriverlessPrinter();
 	void run();
+	bool printFile(const std::shared_ptr<PrintJob>& print_job);
 
-	std::string getName() { return name_; };
-	std::string getHostname() { return hostname_; };
-	std::string getURI() { return uri_; };
-	std::string getSpoolDir() { return spool_dir_; };
-	int getPort() { return port_; };
-	time_t getStartTime() { return start_time_; };
-	ipp_pstate_t getState() { return state_; };
-	ipp_t* getAttributes() { return attrs_; };
+	std::string getName() const { return name_; };
+	std::string getHostname() const { return hostname_; };
+	std::string getURI() const { return uri_; };
+	std::string getSpoolDir() const { return spool_dir_; };
+	int getPort() const { return port_; };
+	time_t getStartTime() const { return start_time_; };
+	ipp_pstate_t getState() const { return state_; };
+	ipp_t* getAttributes() const { return attrs_; };
 
-	// TODO: synchronized? 
+	// TODO: synchronized? <- multithreading
 	bool addJob(std::shared_ptr<PrintJob> job);
 	std::shared_ptr<PrintJob> getJob(int job_id) const;
 	const std::unordered_map<int, std::shared_ptr<PrintJob> >& getJobs() const { return std::ref(jobs_); };
@@ -37,6 +39,7 @@ public:
 	void setState(ipp_pstate_t state) { state_ = state; };
 
 private:
+	wchar_t windows_printer_name_[1024]; // windows printer binded to this
 	std::string name_;
 	std::string hostname_;
 	std::string uuid_;
@@ -51,6 +54,7 @@ private:
 	//DNSServiceRef bonjour_service_; // bonjour service socket
 	ipp_pstate_t state_ = IPP_PSTATE_IDLE;
 	ipp_t* attrs_ = ippNew();
+	cups_ptype_t printer_type_ = 0;
 	//PrintJob* active_job_;
 
 	// TODO: queueing

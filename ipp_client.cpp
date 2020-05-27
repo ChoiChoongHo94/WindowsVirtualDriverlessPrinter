@@ -202,7 +202,7 @@ bool IPPClient::HTTPClient::process(ipp_t*& ipp_request) {
 				respond(HTTP_STATUS_BAD_REQUEST, NULL, NULL, 0, nullptr);
 			}
 		}
-		TestPrint::printIPPAttrs(ipp_request);
+		//TestPrint::printIPPAttrs(ipp_request);
 		break;
 
 	case HTTP_STATE_OPTIONS:
@@ -264,7 +264,7 @@ bool IPPClient::HTTPClient::respond(http_status_t status, std::string content_en
 
 	std::cerr << "[" << __FUNCTION__ << "] httpWriteResponse: ";
 	if (httpWriteResponse(http_, status) < 0) {
-		std::cerr << "failed! <- " << httpStateString(httpGetState(http_)) << "/" << httpStatus(status);
+		std::cerr << "failed! <- " << httpStateString(httpGetState(http_)) << "/" << httpStatus(status) << '\n';
 		return false;
 	}
 	std::cerr << httpStateString(httpGetState(http_)) << "/" << httpStatus(status);
@@ -485,18 +485,18 @@ void IPPClient::respondUnsupported(ipp_attribute_t* attr) {
 
 void IPPClient::ippGetPrinterAttributes_() {
 	std::cerr << "[" << __FUNCTION__ << "] Enter" << '\n';
-	TestPrint::printIPPAttrs(request_);
+	//TestPrint::printIPPAttrs(request_);
 	cups_array_t* ra = ippCreateRequestedArray(request_);
-	TestPrint::printCupsArray(ra);
+	//TestPrint::printCupsArray(ra);
 
 	respond(IPP_STATUS_OK, "");
 
 	// TODO: It seems to need a rw lock.
 	// copy attrs
 	
-	TestPrint::printIPPAttrs(response_);
+	//TestPrint::printIPPAttrs(response_);
 	Util::copy_attributes(response_, vdp_->getAttributes(), NULL, IPP_TAG_ZERO, IPP_TAG_CUPS_CONST);
-	TestPrint::printIPPAttrs(response_);
+	//TestPrint::printIPPAttrs(response_);
 
 	/*
 	In RFC 8011, Section 4.2.5.1. "Get-Printer-Attributes Request",
@@ -512,7 +512,7 @@ void IPPClient::ippGetPrinterAttributes_() {
 	// TODO: unlock
 
 	//cupsArrayDelete(ra);
-	TestPrint::printIPPAttrs(response_);
+	//TestPrint::printIPPAttrs(response_);
 	std::cerr << "[" << __FUNCTION__ << "] Exit" << '\n';
 }
 
@@ -790,7 +790,7 @@ ABORT_JOB:
 
 bool IPPClient::validJobAttributes_() {
 	std::cerr << "[" << __FUNCTION__ << "] Enter" << '\n';
-	//TestPrint::printIPPAttrs(request_);
+	TestPrint::printIPPAttrs(request_);
 	/*
 	기본적으로
 	1) Attribute가 포함한 값의 개수
@@ -840,7 +840,7 @@ bool IPPClient::validJobAttributes_() {
 			respondUnsupported(attr);
 			ret = false;
 		}
-		else if ((supported_attrs = ippFindAttribute(vdp_->getAttributes(), "side-supported", IPP_TAG_KEYWORD)) == NULL ||
+		else if ((supported_attrs = ippFindAttribute(vdp_->getAttributes(), "sides-supported", IPP_TAG_KEYWORD)) == NULL ||
 			(supported_attrs != NULL && !ippContainsString(supported_attrs, sides.c_str()))) {
 			respondUnsupported(attr);
 			ret = false;
