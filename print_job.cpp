@@ -14,9 +14,8 @@
 extern CRITICAL_SECTION JOB_ID_CS;
 extern int NEXT_JOB_ID;
 
-PrintJob::PrintJob(ipp_t* request, VirtualDriverlessPrinter* vdp) {
-	vdp_ = vdp;
-
+PrintJob::PrintJob(ipp_t* request, VirtualDriverlessPrinter* vdp) : vdp_(vdp) {
+	setState(IPP_JSTATE_PENDING);
 	ipp_attribute_t* attr = nullptr;
 
 	// TODO: rw lock ...
@@ -108,7 +107,7 @@ void* PrintJob::process() {
 	/*
 	* Sleep for a random amount of time to simulate job processing.
 	*/
-	sleep((unsigned)(5 + (rand() % 11)));
+	//sleep((unsigned)(5 + (rand() % 11)));
 
 	//TODO: handle Cancel-job
 	setState(IPP_JSTATE_COMPLETED);

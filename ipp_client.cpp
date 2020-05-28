@@ -535,19 +535,22 @@ void IPPClient::ippPrintJob_() {
 		return;
 	}
 
+	job->setProcessingTime(time(NULL));
+	job->setState(IPP_JSTATE_PROCESSING);
 	if (finishDocumentData_(job)) {
-		//TODO: create 'process_job' thread
-		job->process();
-
+		//TODO: queueing, database(jobs_), vdp_->addJob(job);
+		job->setState(IPP_JSTATE_COMPLETED);
+		vdp_->printFile(job);
 		respond(IPP_STATUS_OK, "");
-
 		std::cerr << "[" << __FUNCTION__ << "] Exit, Success" << '\n';
 	}
 	else {
-		// respond(...) is called in the finishDocumentData_()
+		// respond(...) is already called in the finishDocumentData_()
+		job->setState(IPP_JSTATE_ABORTED);
 		std::cerr << "[" << __FUNCTION__ << "] Exit, Failed" << '\n';
 	}
-
+	job->setCompletedTime(time(NULL));
+	
 	std::vector<std::string> rv = { "job-id", "job-state", "job-state-reasons", "job-uri" };
 	Util::copy_job_attributes(response_, job.get(), rv);
 	return;
@@ -740,6 +743,7 @@ void IPPClient::ippGetJobAttributes_() {
 
 bool IPPClient::finishDocumentData_(std::shared_ptr<PrintJob> job) {
 	std::cerr << "[" << __FUNCTION__ << "] Enter" << '\n';
+
 	size_t bytes = 0;
 	char buf[4096];
 	char err_buf[1024];
@@ -778,7 +782,6 @@ bool IPPClient::finishDocumentData_(std::shared_ptr<PrintJob> job) {
 		goto ABORT_JOB;
 	}
 
-	job->setState(IPP_JSTATE_PENDING);
 	std::cerr << "[" << __FUNCTION__ << "] Exit, Successfully received the document data" << '\n';
 	return true;
 
@@ -811,15 +814,16 @@ bool IPPClient::validJobAttributes_() {
 	"sides"
 	"print-quality"
 	*/
-	bool ret = true; // is valid
+	bool ret = true; // is valid?
+	ipp_t* printer_attrs = vdp_->getAttributes();
 	ipp_attribute_t* attr = nullptr;
 	ipp_attribute_t* supported_attrs = nullptr;
 
 	// TODO, FIXME: 윈도우에 어떻게 매핑시킬 것인지 조사 필요할 듯
 	if ((attr = ippFindAttribute(request_, "multiple-document-handling", IPP_TAG_ZERO)) != NULL) {
-		const std::string& tmp_value = std::string(ippGetString(attr, 0, NULL));
+		const std::string& str_value = std::string(ippGetString(attr, 0, NULL));
 		if (ippGetCount(attr) != 1 || ippGetValueTag(attr) != IPP_TAG_KEYWORD ||
-			(tmp_value == "separate-documents-uncollated-copies" && tmp_value == "separate-documents-collated-copies")) {
+			(str_value != "single-document" && str_value != "separate-documents-uncollated-copies" && str_value != "separate-documents-collated-copies")) {
 			respondUnsupported(attr);
 			ret = false;
 		}
@@ -833,7 +837,6 @@ bool IPPClient::validJobAttributes_() {
 		}
 	}
 
-	// TODO: 프린터 장치에 의존적인 부분인거 같음(양면인쇄 지원 여부).
 	if ((attr = ippFindAttribute(request_, "sides", IPP_TAG_ZERO)) != NULL) {
 		const std::string& sides = std::string(ippGetString(attr, 0, NULL));
 		if (ippGetCount(attr) != 1 || ippGetValueTag(attr) != IPP_TAG_KEYWORD) {
@@ -869,7 +872,7 @@ bool IPPClient::validJobAttributes_() {
 			ret = false;
 		}
 		else {
-			supported_attrs = ippFindAttribute(vdp_->getAttributes(), "media-supported", IPP_TAG_KEYWORD);
+			supported_attrs = ippFindAttribute(printer_attrs, "media-supported", IPP_TAG_KEYWORD);
 			if (!ippContainsString(supported_attrs, ippGetString(attr, 0, NULL))) {
 				respondUnsupported(attr);
 				ret = false;
@@ -887,7 +890,7 @@ bool IPPClient::validJobAttributes_() {
 	}
 
 	if ((attr = ippFindAttribute(request_, "printer-resolution", IPP_TAG_ZERO)) != NULL) {
-		supported_attrs = ippFindAttribute(vdp_->getAttributes(), "printer-resolution-supported", IPP_TAG_RESOLUTION);
+		supported_attrs = ippFindAttribute(printer_attrs, "printer-resolution-supported", IPP_TAG_RESOLUTION);
 		if (ippGetCount(attr) != 1 || ippGetValueTag(attr) != IPP_TAG_RESOLUTION ||
 			supported_attrs == NULL) {
 			respondUnsupported(attr);

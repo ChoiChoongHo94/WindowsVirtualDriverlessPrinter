@@ -32,7 +32,7 @@ public:
 private:
 	int id_ = -1;
 	int fd_ = -1;
-	VirtualDriverlessPrinter* vdp_; // owner printer
+	VirtualDriverlessPrinter* vdp_ = nullptr; // owner printer
 	ipp_t* attrs_ = ippNew(); // job attributes
 	ipp_jstate_t state_ = IPP_JSTATE_HELD; // job state
 	std::string uri_; // job uri

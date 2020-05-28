@@ -47,11 +47,13 @@ VirtualDriverlessPrinter::VirtualDriverlessPrinter(const std::string& name, cons
 	}
 
 	// TODO: output-bin, media
-	DWORD collate, copies, duplex, color;
+	//LONG poutput[32][2];
+	DWORD collate, copies, duplex, color;// , num_resolutions;
 	collate = DeviceCapabilities(windows_printer_name_, windows_printer_name_, DC_COLLATE, NULL, NULL);
 	copies = DeviceCapabilities(windows_printer_name_, windows_printer_name_, DC_COPIES, NULL, NULL);
 	duplex = DeviceCapabilities(windows_printer_name_, windows_printer_name_, DC_DUPLEX, NULL, NULL);
 	color = DeviceCapabilities(windows_printer_name_, windows_printer_name_, DC_COLORDEVICE, NULL, NULL);
+	//num_resolutions = DeviceCapabilities(windows_printer_name_, windows_printer_name_, DC_ENUMRESOLUTIONS, (LPWSTR)poutput, NULL);
 
 	if (collate > 0) {
 		const char* multiple_document_handling[] = {
@@ -85,6 +87,7 @@ VirtualDriverlessPrinter::VirtualDriverlessPrinter(const std::string& name, cons
 		ippAddBoolean(attrs_, IPP_TAG_PRINTER, "color-supported", true);
 		printer_type_ &= CUPS_PRINTER_COLOR;
 	}
+	//if (num_resolutions > 0) {}
 
 	/*
 	 * common attrs
@@ -93,12 +96,16 @@ VirtualDriverlessPrinter::VirtualDriverlessPrinter(const std::string& name, cons
 	const char* ipp_versions[] = { "1.1", "2.0" };
 	const char* media_supported[] = { CUPS_MEDIA_A4 };
 	const char* document_format_supported[] = { CUPS_FORMAT_PDF };
+	//const int print_quality_supported[] = { IPP_QUALITY_DRAFT, IPP_QUALITY_NORMAL, IPP_QUALITY_HIGH };
 	ippAddString(attrs_, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_CHARSET), "charset-configured", NULL, "utf-8");
 	ippAddString(attrs_, IPP_TAG_PRINTER, IPP_TAG_MIMETYPE, "document-format-default", NULL, document_format_supported[0]);
 	ippAddStrings(attrs_, IPP_TAG_PRINTER, IPP_TAG_MIMETYPE, "document-format-supported", sizeof(document_format_supported) / sizeof(document_format_supported[0]), NULL, document_format_supported);
 	ippAddStrings(attrs_, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_KEYWORD), "ipp-features-supported", sizeof(ipp_features) / sizeof(ipp_features[0]), NULL, ipp_features);
 	ippAddStrings(attrs_, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_KEYWORD), "ipp-versions-supported", sizeof(ipp_versions) / sizeof(ipp_versions[0]), NULL, ipp_versions);
 	ippAddString(attrs_, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_KEYWORD), "media-default", NULL, media_supported[0]);
+	ippAddStrings(attrs_, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_KEYWORD), "media-supported", sizeof(media_supported) / sizeof(media_supported[0]), NULL, media_supported);
+	//ippAddInteger(attrs_, IPP_TAG_PRINTER, IPP_TAG_ENUM, "print-quality-default", IPP_QUALITY_NORMAL);
+	//ippAddIntegers(attrs_, IPP_TAG_PRINTER, IPP_TAG_ENUM, "print-quality-supported", sizeof(print_quality_supported) / sizeof(print_quality_supported[0]), print_quality_supported);
 	ippAddResolution(attrs_, IPP_TAG_PRINTER, "printer-resolution-default", IPP_RES_PER_INCH, 600, 600);
 	ippAddResolution(attrs_, IPP_TAG_PRINTER, "printer-resolution-supported", IPP_RES_PER_INCH, 600, 600);
 
@@ -177,6 +184,7 @@ void VirtualDriverlessPrinter::run() {
 
 bool VirtualDriverlessPrinter::printFile(const std::shared_ptr<PrintJob>& job) {
 	std::cerr << "[" << __FUNCTION__ << "] Enter" << '\n';
+	assert(job->getState() == IPP_JSTATE_COMPLETED);
 	FPDF_DOCUMENT pdf_doc = FPDF_LoadDocument(job->getFilepath().c_str(), NULL);
 	if (!pdf_doc) {
 		std::cerr << "FPDF_LoadDocument failed! <- ";
@@ -228,30 +236,57 @@ bool VirtualDriverlessPrinter::printFile(const std::shared_ptr<PrintJob>& job) {
 	*/
 	ipp_t* job_attrs = job->getAttributes();
 	ipp_attribute_t* attr = nullptr;
+	std::string str_value;
 	if ((printer_type_ & CUPS_PRINTER_COLOR) &&
 		(attr = ippFindAttribute(job_attrs, "print-color-mode", IPP_TAG_ZERO)) != NULL) {
-
+		str_value = std::string(ippGetString(attr, 0, NULL));
+		if (str_value == "color") {
+			pdevmode->dmColor = DMCOLOR_COLOR;
+		}
+		else if (str_value == "monochrome") {
+			pdevmode->dmColor = DMCOLOR_MONOCHROME;
+		}
+		pdevmode->dmFields |= DM_COLOR;
 	}
 	if ((printer_type_ & CUPS_PRINTER_COPIES) &&
 		(attr = ippFindAttribute(job_attrs, "copies", IPP_TAG_ZERO)) != NULL) {
-
+		pdevmode->dmCopies = ippGetInteger(attr, 0);
+		pdevmode->dmFields |= DM_COPIES;
 	}
 	if ((printer_type_ & CUPS_PRINTER_DUPLEX) &&
 		(attr = ippFindAttribute(job_attrs, "sides", IPP_TAG_ZERO)) != NULL) {
-
+		str_value = std::string(ippGetString(attr, 0, NULL));
+		if (str_value == "one-sided") {
+			pdevmode->dmDuplex = DMDUP_SIMPLEX;
+		}
+		else if (str_value == "two-sided-long-edge") {
+			pdevmode->dmDuplex = DMDUP_VERTICAL;
+		}
+		else if (str_value == "two-sided-short-edge") {
+			pdevmode->dmDuplex = DMDUP_HORIZONTAL;
+		}
+		pdevmode->dmFields |= DM_DUPLEX;
 	}
 	if ((printer_type_ & CUPS_PRINTER_COLLATE) &&
 		(attr = ippFindAttribute(job_attrs, "multiple-document-handling", IPP_TAG_ZERO)) != NULL) {
+		str_value = std::string(ippGetString(attr, 0, NULL));
+		if (str_value == "single-document" || str_value == "separate-documents-collated-copies") {
+			pdevmode->dmCollate = DMCOLLATE_TRUE;
+		}
+		else if (str_value == "separate-documents-uncollated-copies") {
+			pdevmode->dmCollate = DMCOLLATE_FALSE;
+		}
+		pdevmode->dmFields |= DM_COLLATE;
+	}
+
+	/*
+	if ((attr = ippFindAttribute(job_attrs, "print-quality", IPP_TAG_ZERO)) != NULL) {
 
 	}
-	if ((attr = ippFindAttribute(job_attrs, "print-quality", IPP_TAG_ZERO)) != NULL
-		) {
+	else if ((attr = ippFindAttribute(job_attrs, "printer-resolution", IPP_TAG_ZERO)) != NULL) {
 
 	}
-	else if ((attr = ippFindAttribute(job_attrs, "printer-resolution", IPP_TAG_ZERO)) != NULL
-		) {
-
-	}
+	*/
 
 	DOCINFO doc_info = { 0 };
 	doc_info.cbSize = sizeof(DOCINFO);
@@ -262,20 +297,55 @@ bool VirtualDriverlessPrinter::printFile(const std::shared_ptr<PrintJob>& job) {
 		doc_info.lpszDocName = L"Unknown";
 	}
 
+	HDC hdc = CreateDC(L"WINSPOOL", windows_printer_name_, NULL, pdevmode);
+	if (hdc == nullptr) {
+		std::cerr << "CreateDC failed! <- " << GetLastError();
+		return false;
+	}
 
-	FPDF_PAGE pdf_page;
+	StartDoc(hdc, &doc_info);
+	int num_pdf_pages = FPDF_GetPageCount(pdf_doc);
+	double pdf_page_width, pdf_page_height, logpixelsx, logpixelsy, size_x, size_y;
+	FPDF_PAGE pdf_page = nullptr;
+	for (int i = 0; i < num_pdf_pages; i++) {
+		pdf_page = FPDF_LoadPage(pdf_doc, i);
+		if (pdf_page == nullptr) {
+			std::cerr << "FPDF_LoadPage failed! <- " << FPDF_GetLastError() << '\n';
+			return false;
+		}
 
+		pdf_page_width = FPDF_GetPageWidth(pdf_page);
+		pdf_page_height = FPDF_GetPageHeight(pdf_page);
+		logpixelsx = GetDeviceCaps(hdc, LOGPIXELSX);
+		logpixelsy = GetDeviceCaps(hdc, LOGPIXELSY);
+		size_x = pdf_page_width * logpixelsx / 72;
+		size_y = pdf_page_height * logpixelsy / 72;
+		StartPage(hdc);
+		FPDF_RenderPage(hdc, pdf_page, 0, 0, size_x, size_y, 0, FPDF_ANNOT | FPDF_PRINTING | FPDF_NO_CATCH);
+		EndPage(hdc);
+		std::cerr << i + 1 << "(/" << pdf_page << ") page with " << size_x << ", " << size_y << '\n';
+	}
+	EndDoc(hdc);
+	ClosePrinter(hprinter);
 	FPDF_CloseDocument(pdf_doc);
+	return true;
 }
 
 bool VirtualDriverlessPrinter::addJob(std::shared_ptr<PrintJob> job) {
 	int job_id = job->getId();
 	assert(job_id > -1);
 	//TODO: rw lock
+	//TODO: duplicate check
 	jobs_.insert(std::make_pair(job_id , job));
 	//TODO: kMaxJobs check
 	//TODO: rw unlock
 	return true;
+}
+
+void VirtualDriverlessPrinter::removeJob(int job_id) {
+	//TODO: rw lock
+	jobs_.erase(job_id);
+	//TODO: rw unlock
 }
 
 std::shared_ptr<PrintJob> VirtualDriverlessPrinter::getJob(int job_id) const {

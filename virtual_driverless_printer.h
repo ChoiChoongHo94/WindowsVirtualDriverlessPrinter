@@ -33,6 +33,7 @@ public:
 
 	// TODO: synchronized? <- multithreading
 	bool addJob(std::shared_ptr<PrintJob> job);
+	void removeJob(int job_id);
 	std::shared_ptr<PrintJob> getJob(int job_id) const;
 	const std::unordered_map<int, std::shared_ptr<PrintJob> >& getJobs() const { return std::ref(jobs_); };
 
