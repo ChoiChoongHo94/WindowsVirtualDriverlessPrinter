@@ -1,7 +1,6 @@
 #include "virtual_driverless_printer.h"
 #include "ipp_client.h"
 #include "my_util.h"
-#include <dns_sd.h>
 #include <fcntl.h>
 #include <io.h>
 #include <process.h>
@@ -11,31 +10,30 @@
 #include <sstream>
 #include <fpdfview.h>
 
-
 static unsigned WINAPI ProcessIPPThread(LPVOID ipp_client);
 
 VirtualDriverlessPrinter::VirtualDriverlessPrinter(const std::string& name, const int port)
-	: name_(name), port_(port) {
+	: name_(name), port_(port), start_time_(time(NULL)) {
 	// hostname
 	WSADATA wsa_data;
 	int err = WSAStartup(MAKEWORD(2, 2), &wsa_data);
 	char hostname[256];
 	std::cerr << "gethostname() return: " << gethostname(hostname, sizeof(hostname)) << '\n';
-	hostname_ = hostname;
+	const_cast<std::string&>(hostname_) = hostname;
 
 	// uuid
 	char assemble_uuid_buf[46];
-	uuid_ = httpAssembleUUID(hostname_.c_str(), port_, name_.c_str(), 0, assemble_uuid_buf, sizeof(assemble_uuid_buf));
+	const_cast<std::string&>(uuid_) = httpAssembleUUID(hostname_.c_str(), port_, name_.c_str(), 0, assemble_uuid_buf, sizeof(assemble_uuid_buf));
 
 	// url
 	char uri[1024];
 	httpAssembleURI(HTTP_URI_CODING_ALL, uri, sizeof(uri), "ipp", NULL, hostname_.c_str(), port_, "/ipp/print");
-	uri_ = uri;
+	const_cast<std::string&>(uri_) = uri;
 
 	//adminurl
 	char adminurl[1024];
 	httpAssembleURI(HTTP_URI_CODING_ALL, adminurl, sizeof(adminurl), "http", NULL, hostname_.c_str(), port_, "/");
-	adminurl_ = adminurl;
+	const_cast<std::string&>(adminurl_) = adminurl;
 
 	HANDLE hprinter;
 	DWORD cch_printer(ARRAYSIZE(windows_printer_name_));
@@ -75,13 +73,13 @@ VirtualDriverlessPrinter::VirtualDriverlessPrinter(const std::string& name, cons
 		printer_type_ &= CUPS_PRINTER_COPIES;
 	}
 	if (duplex > 0) {
-		const char* sides_supported[] = { "one-sided", "two-sided-long-edge", "two-sided-short-edge"};
+		const char* sides_supported[] = { "one-sided", "two-sided-long-edge", "two-sided-short-edge" };
 		ippAddString(attrs_, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_KEYWORD), "sides-default", NULL, sides_supported[0]);
 		ippAddStrings(attrs_, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_KEYWORD), "sides-supported", sizeof(sides_supported) / sizeof(sides_supported[0]), NULL, sides_supported);
 		printer_type_ &= CUPS_PRINTER_DUPLEX;
 	}
 	if (color > 0) {
-		const char* print_color_mode_supported[] = {"color", "monochrome" };
+		const char* print_color_mode_supported[] = { "color", "monochrome" };
 		ippAddString(attrs_, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_KEYWORD), "print-color-mode-default", NULL, print_color_mode_supported[0]);
 		ippAddStrings(attrs_, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_KEYWORD), "print-color-mode-supported", sizeof(print_color_mode_supported) / sizeof(print_color_mode_supported[0]), NULL, print_color_mode_supported);
 		ippAddBoolean(attrs_, IPP_TAG_PRINTER, "color-supported", true);
@@ -117,8 +115,7 @@ VirtualDriverlessPrinter::VirtualDriverlessPrinter(const std::string& name, cons
 	ippAddString(attrs_, IPP_TAG_PRINTER, IPP_TAG_NAME, "printer-name", NULL, name_.c_str());
 	ippAddString(attrs_, IPP_TAG_PRINTER, IPP_TAG_URI, "printer-uuid", NULL, uuid_.c_str());
 
-	start_time_ = time(NULL);
-	
+	initBonjourService_();
 	FPDF_InitLibrary();
 
 	std::cerr << "VirtualDriverlessPrinter object is created." << '\n';
@@ -126,36 +123,92 @@ VirtualDriverlessPrinter::VirtualDriverlessPrinter(const std::string& name, cons
 
 VirtualDriverlessPrinter::~VirtualDriverlessPrinter() {
 	WSACleanup();
+	DNSServiceRefDeallocate(bonjour_service_);
 	FPDF_DestroyLibrary();
 }
 
+
+void VirtualDriverlessPrinter::initBonjourService_() {
+	assert(port_ != -1);
+	std::string service_name;
+	{
+		std::wstring tmp_ws = windows_printer_name_;
+		assert(!tmp_ws.empty());
+		service_name.assign(tmp_ws.begin(), tmp_ws.end());
+	}
+
+	DNSServiceErrorType err;
+	if (err = (DNSServiceCreateConnection(&bonjour_service_)) != kDNSServiceErr_NoError) {
+		std::cerr << "Bonjour Connection is failed! <- Error code: " << err << '\n';
+		abort();
+	}
+
+	TXTRecordRef txt_record;
+	std::string str_value;
+	ipp_attribute_t* attr;
+	TXTRecordCreate(&txt_record, 1024, NULL);
+	TXTRecordSetValue(&txt_record, "rp", 9, "ipp/print");
+	TXTRecordSetValue(&txt_record, "txtvers", 1, "1");
+	TXTRecordSetValue(&txt_record, "qtotal", 1, "1");
+	TXTRecordSetValue(&txt_record, "adminurl", 1, adminurl_.c_str());
+	if ((attr = ippFindAttribute(attrs_, "color-supported", IPP_TAG_BOOLEAN)) != NULL) {
+		TXTRecordSetValue(&txt_record, "Color", 1, ippGetBoolean(attr, 0) ? "T" : "F");
+	}
+	if ((attr = ippFindAttribute(attrs_, "sides-supported", IPP_TAG_KEYWORD)) != NULL) {
+		TXTRecordSetValue(&txt_record, "Duplex", 1, ippGetCount(attr) > 1 ? "T" : "F");
+	}
+	if ((attr = ippFindAttribute(attrs_, "document-format-supported", IPP_TAG_MIMETYPE)) != NULL) {
+		str_value = ippGetString(attr, 0, NULL);
+		for (int i = 1; i < ippGetCount(attr); i++) {
+			str_value += "," + std::string(ippGetString(attr, 0, NULL));
+		}
+		TXTRecordSetValue(&txt_record, "pdl", str_value.size(), str_value.c_str());
+	}
+	if ((attr = ippFindAttribute(attrs_, "printer-location", IPP_TAG_TEXT)) != NULL && !(str_value = ippGetString(attr, 0, NULL)).empty()) {
+		TXTRecordSetValue(&txt_record, "note", str_value.size(), str_value.c_str());
+	}
+	if ((attr = ippFindAttribute(attrs_, "printer-make-and-model", IPP_TAG_TEXT)) != NULL && !(str_value = ippGetString(attr, 0, NULL)).empty()) {
+		TXTRecordSetValue(&txt_record, "ty", str_value.size(), str_value.c_str());
+	}
+	if ((attr = ippFindAttribute(attrs_, "printer-uuid", IPP_TAG_URI)) != NULL && !(str_value = ippGetString(attr, 0, NULL)).empty()) {
+		TXTRecordSetValue(&txt_record, "UUID", str_value.size() - 9, str_value.c_str());
+	}
+
+	if ((err = DNSServiceRegister(&bonjour_service_, kDNSServiceFlagsShareConnection, kDNSServiceInterfaceIndexAny, service_name.c_str(),
+		"_ipp._tcp", NULL /* domain */, NULL /* host */, htons(port_), TXTRecordGetLength(&txt_record), TXTRecordGetBytesPtr(&txt_record), NULL, NULL)) != kDNSServiceErr_NoError) {
+		std::cerr << "Bonjour Service registration is failed! <- Error code: " << err << '\n';
+		abort();
+	}
+
+	std::cerr << "Bonjour Service(\"" << service_name << "\") registration on " << port_ << " port is success." << '\n';
+}
+
 void VirtualDriverlessPrinter::run() {
-	int timeout = 0;
+	int timeout = -1;
 
 	// socket
 	http_addrlist_t* addrlist = httpAddrGetList(NULL, AF_INET, std::to_string(port_).c_str());
-	ipv4_ = httpAddrListen(&(addrlist->addr), port_);
+	const_cast<int&>(ipv4_) = httpAddrListen(&(addrlist->addr), port_);
 	httpAddrFreeList(addrlist);
 
 	nfds_t num_fds = 1;
 	struct pollfd polldata[1];
+
 	polldata[0].fd = ipv4_;
 	polldata[0].events = POLLIN;
-
 	/*
 	polldata[1].fd = ipv6_;
 	polldata[1].events = POLLIN;
-	polldata[2].fd = DNSServiceRefSockFD(bonjour_service_);
+	polldata[2].fd = DNSServiceRefSockFD(bonjour_service_); -> 필수적인것은 아님. Bonjour데몬과 통신하고 그에 따른 콜백을 이용할 때 필요한듯 (dns-sd.h 주석 참고)
 	polldata[2].events = POLLIN;
 	*/
-
 
 	unsigned thread_id = -1;
 	//HANDLE threads[MAX_THREADS];
 	std::cerr << "The printer \"" << name_ << "\" is start to run!" << '\n';
 	for (;;) {
 		if (poll(polldata, (nfds_t)num_fds, timeout) < 0 && errno != EINTR) {
-			std::cerr << "WSAPoll failed <- " << WSAGetLastError() << '\n';
+			std::cerr << "WSAPoll failed! <- " << WSAGetLastError() << '\n';
 			break;
 		}
 
@@ -181,6 +234,22 @@ void VirtualDriverlessPrinter::run() {
 	}
 	std::cerr << "The printer \"" << name_ << "\" is end to run!" << '\n';
 }
+
+//void VirtualDriverlessPrinter::queueJob(const std::shared_ptr<PrintJob>& job) {
+//	//TODO: rw lock
+//	job_queue_mutex_.lock();
+//	job_queue_.push(job);
+//	job_queue_mutex_.unlock();
+//	//TODO: rw unlock
+//}
+//
+//std::shared_ptr<PrintJob> VirtualDriverlessPrinter::dequeueJob() {
+//	job_queue_mutex_.lock();
+//	auto& ret = job_queue_.front();
+//	job_queue_.pop();
+//	job_queue_mutex_.unlock();
+//	return ret;
+//}
 
 bool VirtualDriverlessPrinter::printFile(const std::shared_ptr<PrintJob>& job) {
 	std::cerr << "[" << __FUNCTION__ << "] Enter" << '\n';
@@ -290,7 +359,7 @@ bool VirtualDriverlessPrinter::printFile(const std::shared_ptr<PrintJob>& job) {
 
 	DOCINFO doc_info = { 0 };
 	doc_info.cbSize = sizeof(DOCINFO);
-	if ((attr = ippFindAttribute(job_attrs, "document-name", IPP_TAG_NAME)) != NULL) {
+	if ((attr = ippFindAttribute(job_attrs, "document-name-supplied", IPP_TAG_NAME)) != NULL) {
 		doc_info.lpszDocName = LPCWSTR(ippGetString(attr, 0, NULL));
 	}
 	else {
@@ -323,7 +392,7 @@ bool VirtualDriverlessPrinter::printFile(const std::shared_ptr<PrintJob>& job) {
 		StartPage(hdc);
 		FPDF_RenderPage(hdc, pdf_page, 0, 0, size_x, size_y, 0, FPDF_ANNOT | FPDF_PRINTING | FPDF_NO_CATCH);
 		EndPage(hdc);
-		std::cerr << i + 1 << "(/" << pdf_page << ") page with " << size_x << ", " << size_y << '\n';
+		std::cerr << "Page #" << i + 1 << "(Total:" << num_pdf_pages << ") with " << size_x << ", " << size_y << '\n';
 	}
 	EndDoc(hdc);
 	ClosePrinter(hprinter);
@@ -334,18 +403,18 @@ bool VirtualDriverlessPrinter::printFile(const std::shared_ptr<PrintJob>& job) {
 bool VirtualDriverlessPrinter::addJob(std::shared_ptr<PrintJob> job) {
 	int job_id = job->getId();
 	assert(job_id > -1);
-	//TODO: rw lock
-	//TODO: duplicate check
+	//jobs_mutex_.lock();
+	//TODO: duplicate check -> return false;
 	jobs_.insert(std::make_pair(job_id , job));
 	//TODO: kMaxJobs check
-	//TODO: rw unlock
+	//jobs_mutex_.unlock();
 	return true;
 }
 
 void VirtualDriverlessPrinter::removeJob(int job_id) {
-	//TODO: rw lock
+	//jobs_mutex_.lock();
 	jobs_.erase(job_id);
-	//TODO: rw unlock
+	//jobs_mutex_.unlock();
 }
 
 std::shared_ptr<PrintJob> VirtualDriverlessPrinter::getJob(int job_id) const {

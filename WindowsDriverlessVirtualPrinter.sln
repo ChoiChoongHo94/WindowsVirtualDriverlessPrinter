@@ -7,6 +7,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "WindowsDriverlessVirtualPri
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "printer_winapi_test", "..\printer_winapi_test\printer_winapi_test.vcxproj", "{C09D7315-A9CD-4308-A988-C792435BADFE}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "dns-sd_test", "..\dns-sd_test\dns-sd_test.vcxproj", "{9AF88B93-8506-44D3-B7E1-80D3F2E71F0B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -31,6 +33,14 @@ Global
 		{C09D7315-A9CD-4308-A988-C792435BADFE}.Release|x64.Build.0 = Release|x64
 		{C09D7315-A9CD-4308-A988-C792435BADFE}.Release|x86.ActiveCfg = Release|Win32
 		{C09D7315-A9CD-4308-A988-C792435BADFE}.Release|x86.Build.0 = Release|Win32
+		{9AF88B93-8506-44D3-B7E1-80D3F2E71F0B}.Debug|x64.ActiveCfg = Debug|x64
+		{9AF88B93-8506-44D3-B7E1-80D3F2E71F0B}.Debug|x64.Build.0 = Debug|x64
+		{9AF88B93-8506-44D3-B7E1-80D3F2E71F0B}.Debug|x86.ActiveCfg = Debug|Win32
+		{9AF88B93-8506-44D3-B7E1-80D3F2E71F0B}.Debug|x86.Build.0 = Debug|Win32
+		{9AF88B93-8506-44D3-B7E1-80D3F2E71F0B}.Release|x64.ActiveCfg = Release|x64
+		{9AF88B93-8506-44D3-B7E1-80D3F2E71F0B}.Release|x64.Build.0 = Release|x64
+		{9AF88B93-8506-44D3-B7E1-80D3F2E71F0B}.Release|x86.ActiveCfg = Release|Win32
+		{9AF88B93-8506-44D3-B7E1-80D3F2E71F0B}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

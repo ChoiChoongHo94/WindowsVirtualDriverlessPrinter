@@ -1,6 +1,7 @@
 #pragma once
 #include <cups/ipp.h>
 #include <string>
+//#include <process.h>
 //#include "virtual_driverless_printer.h"
 
 // is the '상호참조' resolved from the forward declaration?? -> OK
@@ -8,6 +9,7 @@ class VirtualDriverlessPrinter;
 
 class PrintJob {
 public:
+	//static void initPrivateStatics();
 	PrintJob(ipp_t* request, VirtualDriverlessPrinter* vdp);
 	virtual ~PrintJob();
 	void* process();

@@ -4,8 +4,11 @@
 #include <cups/ipp.h>
 #include <cups/cups.h>
 #include <dns_sd.h>
+#include <queue>
 #include <unordered_map>
 #include <memory>
+//#include <thread>
+//#include <mutex>
 #include "print_job.h"
 
 #define poll WSAPoll
@@ -15,12 +18,13 @@ class VirtualDriverlessPrinter {
 public:
 	/* TODO
 	static const int kMaxJobs = 500;
-	static const
+	static const int kMaxThreads = 5;
 	*/
+	
 	VirtualDriverlessPrinter(const std::string& name, const int port);
 	virtual ~VirtualDriverlessPrinter();
 	void run();
-	bool printFile(const std::shared_ptr<PrintJob>& print_job);
+	bool printFile(const std::shared_ptr<PrintJob>& job);
 
 	std::string getName() const { return name_; };
 	std::string getHostname() const { return hostname_; };
@@ -31,7 +35,8 @@ public:
 	ipp_pstate_t getState() const { return state_; };
 	ipp_t* getAttributes() const { return attrs_; };
 
-	// TODO: synchronized? <- multithreading
+	//void queueJob(const std::shared_ptr<PrintJob>& job);
+	//std::shared_ptr<PrintJob> dequeueJob();
 	bool addJob(std::shared_ptr<PrintJob> job);
 	void removeJob(int job_id);
 	std::shared_ptr<PrintJob> getJob(int job_id) const;
@@ -41,27 +46,26 @@ public:
 
 private:
 	wchar_t windows_printer_name_[1024]; // windows printer binded to this
-	std::string name_;
-	std::string hostname_;
-	std::string uuid_;
-	std::string uri_;
-	std::string device_uri_;
-	std::string adminurl_;
-	std::string spool_dir_ = "C:/Temp";
-	int port_ = -1;
-	int ipv4_ = -1; // ipv4 socket
-	int ipv6_ = -1; // ipv6 socket
-	time_t start_time_;
-	//DNSServiceRef bonjour_service_; // bonjour service socket
+	const std::string name_;
+	const std::string hostname_;
+	const std::string uuid_;
+	const std::string uri_;
+	//const std::string device_uri_;
+	const std::string adminurl_;
+	const std::string spool_dir_ = "C:/Temp";
+	const int port_ = -1;
+	const int ipv4_ = -1; // ipv4 socket
+	const int ipv6_ = -1; // ipv6 socket
+	const time_t start_time_;
+	DNSServiceRef bonjour_service_; // bonjour service socket
 	ipp_pstate_t state_ = IPP_PSTATE_IDLE;
 	ipp_t* attrs_ = ippNew();
 	cups_ptype_t printer_type_ = 0;
 	//PrintJob* active_job_;
 
-	// TODO: queueing
-	//std::priority_queue<std::shared_ptr<PrintJob>> spooling_q;
-
+	//std::mutex jobs_mutex_;
+	HANDLE mutex_jobs_;
 	std::unordered_map<int, std::shared_ptr<PrintJob> > jobs_;
-	// TODO: read-write lock
-
+	
+	void initBonjourService_();
 };

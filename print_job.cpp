@@ -11,8 +11,13 @@
 #include <process.h>
 
 // in 'main.cpp'
-extern CRITICAL_SECTION JOB_ID_CS;
+extern HANDLE MUTEX_JOB_ID;
 extern int NEXT_JOB_ID;
+
+///*static*/ void PrintJob::initPrivateStatics() {
+//	MUTEX_JOB_ID_ = CreateMutex(NULL, FALSE, NULL);
+//	NEXT_JOB_ID_ = 0;
+//}
 
 PrintJob::PrintJob(ipp_t* request, VirtualDriverlessPrinter* vdp) : vdp_(vdp) {
 	setState(IPP_JSTATE_PENDING);
@@ -47,9 +52,9 @@ PrintJob::PrintJob(ipp_t* request, VirtualDriverlessPrinter* vdp) : vdp_(vdp) {
 		name_ = ippGetString(attr, 0, NULL);
 	}
 
-	EnterCriticalSection(&JOB_ID_CS);
-	id_ = ++NEXT_JOB_ID;
-	LeaveCriticalSection(&JOB_ID_CS);
+	//EnterCriticalSection(&JOB_ID_CS);
+	id_ = ++NEXT_JOB_ID; // atomic<int>
+	//LeaveCriticalSection(&JOB_ID_CS);
 	std::cerr << "job-id: " << id_ << '\n';
 
 	char job_uri_buf[1024];
@@ -80,6 +85,9 @@ PrintJob::PrintJob(ipp_t* request, VirtualDriverlessPrinter* vdp) : vdp_(vdp) {
 			vdp_->getHostname().c_str(), vdp_->getPort(), "/ipp/print");
 		ippAddString(attrs_, IPP_TAG_JOB, IPP_TAG_URI, "job-printer-uri", NULL, printer_uri);
 	}
+	if ((attr = ippFindAttribute(request, "document-name", IPP_TAG_NAME)) != NULL) {
+		ippAddString(attrs_, IPP_TAG_DOCUMENT, IPP_TAG_NAME, "document-name", NULL, ippGetString(attr, 0, NULL));
+	}
 
 	ippAddInteger(attrs_, IPP_TAG_JOB, IPP_TAG_INTEGER, "time-at-creation", (int)(created_time_ - vdp_->getStartTime()));
 
@@ -97,6 +105,8 @@ PrintJob::~PrintJob() {
 	ippDelete(attrs_);
 }
 
+
+// TODO: delete
 void* PrintJob::process() {
 	setProcessingTime(time(NULL));
 	setState(IPP_JSTATE_PROCESSING);
@@ -132,8 +142,6 @@ int PrintJob::createJobFile() {
 		job_name = tmp_job_name;
 	}
 	filepath_ = vdp_->getSpoolDir() + "/" + std::to_string(id_) + "-" + job_name;
-
-	// ippsample issue: https://github.com/istopwg/ippsample/issues/181
 	return (fd_ = open(filepath_.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0666));
 }
 

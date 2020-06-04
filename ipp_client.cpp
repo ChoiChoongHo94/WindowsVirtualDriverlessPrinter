@@ -92,7 +92,7 @@ bool IPPClient::HTTPClient::process(ipp_t*& ipp_request) {
 	http_status_t status;
 	bool ret = true;
 
-	// 1)
+	// 1) '연결 확인 중'로직이 이부분과 관련이 있나?
 	while ((state = httpReadRequest(http_, uri, sizeof(uri))) == HTTP_STATE_WAITING)
 		Sleep(1);
 	 
