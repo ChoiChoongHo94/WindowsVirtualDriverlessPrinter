@@ -149,6 +149,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="ipp_client.cpp" />
+    <ClCompile Include="ipp_client_thread_pool.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="print_job.cpp" />
     <ClCompile Include="my_util.cpp" />

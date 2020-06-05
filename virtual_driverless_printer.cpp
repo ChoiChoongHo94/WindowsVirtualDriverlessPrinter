@@ -39,7 +39,7 @@ VirtualDriverlessPrinter::VirtualDriverlessPrinter(const std::string& name, cons
 	DWORD cch_printer(ARRAYSIZE(windows_printer_name_));
 	GetDefaultPrinter(windows_printer_name_, &cch_printer);
 	if (!OpenPrinter(windows_printer_name_, &hprinter, NULL)) {
-		std::cerr << "OpenPrinter failed <- " << GetLastError();
+		std::cerr << "OpenPrinter failed! <- " << GetLastError();
 		assert(1);
 		return;
 	}
@@ -429,4 +429,8 @@ static unsigned WINAPI ProcessIPPThread(LPVOID ipp_client) {
 	((IPPClient*)ipp_client)->process();
 	std::cerr << "A Client Thread is end." << '\n';
 	return 0;
+}
+
+void CALLBACK VirtualDriverlessPrinter::ipp_client_routine_(PTP_CALLBACK_INSTANCE, void* context, PTP_WORK) {
+
 }

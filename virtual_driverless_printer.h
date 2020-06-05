@@ -57,7 +57,7 @@ private:
 	const int ipv4_ = -1; // ipv4 socket
 	const int ipv6_ = -1; // ipv6 socket
 	const time_t start_time_;
-	DNSServiceRef bonjour_service_; // bonjour service socket
+	DNSServiceRef bonjour_service_;
 	ipp_pstate_t state_ = IPP_PSTATE_IDLE;
 	ipp_t* attrs_ = ippNew();
 	cups_ptype_t printer_type_ = 0;
@@ -68,4 +68,5 @@ private:
 	std::unordered_map<int, std::shared_ptr<PrintJob> > jobs_;
 	
 	void initBonjourService_();
+	static void CALLBACK ipp_client_routine_(PTP_CALLBACK_INSTANCE, void* context, PTP_WORK);
 };

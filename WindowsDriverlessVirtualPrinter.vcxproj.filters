@@ -16,6 +16,9 @@
     <ClCompile Include="my_util.cpp">
       <Filter>Source</Filter>
     </ClCompile>
+    <ClCompile Include="ipp_client_thread_pool.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ipp_client.h">
