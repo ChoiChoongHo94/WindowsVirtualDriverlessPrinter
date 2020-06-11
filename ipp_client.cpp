@@ -9,6 +9,19 @@
 #include "my_definitions.h"
 #include "my_util.h"
 
+static std::shared_ptr<FileLogger> S_ACCESS_LOGGER = nullptr;
+void INIT_ACCESS_LOGGER(const std::string& filename) {
+	char* userhome_dir;
+	size_t num_elements;
+	if (_dupenv_s(&userhome_dir, &num_elements, "USERPROFILE") != 0) {
+		abort();
+	}
+	S_ACCESS_LOGGER = std::make_shared<FileLogger>(std::string(userhome_dir) + "\\" + filename);
+	free(userhome_dir);
+}
+
+// TODO: #define LOG_ACCESS(...) S_ACCESS_LOGGER.writef(..
+
 namespace TestPrint {
 	void printCupsArray(cups_array_t* ca) {
 		std::cerr << "============================" << __FUNCTION__ << "============================" << '\n';
@@ -36,7 +49,7 @@ namespace TestPrint {
 	}
 }
 
-IPPClient::HTTPClient::HTTPClient(int sock_fd) {
+HTTPClient::HTTPClient(int sock_fd) {
 	std::cerr << "[HTTPClient(" << this << ") ctor]" << '\n';
 	char hostname[1024];
 	if ((http_ = httpAcceptConnection(sock_fd, 1)) != nullptr) {
@@ -59,7 +72,7 @@ IPPClient::IPPClient(VirtualDriverlessPrinter* vdp, int sock_fd) : vdp_(vdp) {
 	http_client_ = std::make_shared<HTTPClient>(sock_fd);
 }
 
-IPPClient::HTTPClient::~HTTPClient() {
+HTTPClient::~HTTPClient() {
 	std::cerr << "[HTTPClient(" << this << ") dtor] Closing connection from '" << hostname_ << "'\n";
 	httpFlushWrite(http_);
 	httpClose(http_);
@@ -71,7 +84,7 @@ IPPClient::~IPPClient() {
 	if (response_ != nullptr) ippDelete(response_);
 }
 
-bool IPPClient::HTTPClient::process(ipp_t*& ipp_request) {
+bool HTTPClient::process(ipp_t*& ipp_request) {
 	// Test
 	if (hostname_ != "192.168.8.118") {
 		std::cerr << "@@ not allowed client @@" << '\n';
@@ -222,7 +235,7 @@ EXIT:
 	return ret;
 }
 
-bool IPPClient::HTTPClient::respond(http_status_t status, std::string content_encoding,
+bool HTTPClient::respond(http_status_t status, std::string content_encoding,
 	std::string mime_type, size_t length, ipp_t* ipp_response) {
 	if (status == HTTP_STATUS_CONTINUE) {
 		return (httpWriteResponse(http_, HTTP_STATUS_CONTINUE) == 0);
@@ -538,7 +551,7 @@ void IPPClient::ippPrintJob_() {
 	job->setProcessingTime(time(NULL));
 	job->setState(IPP_JSTATE_PROCESSING);
 	if (finishDocumentData_(job)) {
-		//TODO: queueing, database(jobs_), vdp_->addJob(job);
+		vdp_->addJob(job->getId(), job);
 		job->setState(IPP_JSTATE_COMPLETED);
 		vdp_->printFile(job);
 		respond(IPP_STATUS_OK, "");
@@ -553,6 +566,7 @@ void IPPClient::ippPrintJob_() {
 	
 	std::vector<std::string> rv = { "job-id", "job-state", "job-state-reasons", "job-uri" };
 	Util::copy_job_attributes(response_, job.get(), rv);
+	vdp_->removeJob(job->getId());
 	return;
 };
 
@@ -570,7 +584,7 @@ void IPPClient::ippCreateJob_() {
 	}
 
 	auto job = std::make_shared<PrintJob>(request_, vdp_);
-	if (!vdp_->addJob(job)) {
+	if (!vdp_->addJob(job->getId(), job)) {
 		respond(IPP_STATUS_ERROR_BUSY, "Currently the printer is busy..");
 	}
 
@@ -621,6 +635,7 @@ void IPPClient::ippSendDocument_() {
 	}
 	 
 	// TODO
+	// vdp_->addJob, printFile, removeJob, ...
 
 	std::cerr << "[" << __FUNCTION__ << "] Exit" << '\n';
 };

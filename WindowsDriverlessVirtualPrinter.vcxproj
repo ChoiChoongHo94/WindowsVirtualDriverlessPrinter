@@ -104,15 +104,16 @@
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions);_WINSOCKAPI_;INCL_WINSOCK_API_PROTOTYPES;_CRT_SECURE_NO_WARNINGS;</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <AdditionalIncludeDirectories>$(SolutionDir)\Include\</AdditionalIncludeDirectories>
-      <LanguageStandard>stdcpp14</LanguageStandard>
+      <LanguageStandard>stdcpp17</LanguageStandard>
       <CompileAs>CompileAsCpp</CompileAs>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalDependencies>libcups2.lib;dnssdstub.lib;wsock32.lib;pdfium.dll.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(SolutionDir)\x64\Debug\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(SolutionDir)\x64\Debug\;$(SolutionDir)\x64\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
+      <AdditionalOptions>/NODEFAULTLIB:MSVCRT %(AdditionalOptions)</AdditionalOptions>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -149,7 +150,8 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="ipp_client.cpp" />
-    <ClCompile Include="ipp_client_thread_pool.cpp" />
+    <ClCompile Include="logger.cpp" />
+    <ClCompile Include="thread_pool.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="print_job.cpp" />
     <ClCompile Include="my_util.cpp" />
@@ -157,6 +159,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ipp_client.h" />
+    <ClInclude Include="logger.h" />
     <ClInclude Include="print_job.h" />
     <ClInclude Include="my_definitions.h" />
     <ClInclude Include="my_util.h" />

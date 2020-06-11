@@ -16,7 +16,10 @@
     <ClCompile Include="my_util.cpp">
       <Filter>Source</Filter>
     </ClCompile>
-    <ClCompile Include="ipp_client_thread_pool.cpp">
+    <ClCompile Include="thread_pool.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="logger.cpp">
       <Filter>Source</Filter>
     </ClCompile>
   </ItemGroup>
@@ -37,6 +40,9 @@
       <Filter>Header</Filter>
     </ClInclude>
     <ClInclude Include="thread_pool.h">
+      <Filter>Header</Filter>
+    </ClInclude>
+    <ClInclude Include="logger.h">
       <Filter>Header</Filter>
     </ClInclude>
   </ItemGroup>

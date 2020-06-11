@@ -1,1 +1,2 @@
-﻿  dnssdstub.vcxproj -> C:\Users\cch\source\repos\ippsample-master\vcnet\x64/Debug/dnssdstub.lib
+﻿  dns_sd.c
+  dnssdstub.vcxproj -> C:\Users\cch\source\repos\ippsample\vcnet\x64/Debug/dnssdstub.lib

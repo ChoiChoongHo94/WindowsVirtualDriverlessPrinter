@@ -1,1 +1,27 @@
-﻿  regex.vcxproj -> C:\Users\cch\source\repos\ippsample-master\vcnet\x64\Debug\regex.dll
+﻿cl : 명령줄 warning D9035: 'Gm' 옵션은 더 이상 사용되지 않으므로 이후 릴리스에서 제거될 예정입니다.
+  split.c
+  regfree.c
+  regexec.c
+C:\Users\cch\source\repos\ippsample\vcnet\regex\engine.c(204,39): warning C4244: '=': '__int64'에서 'regoff_t'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\cch\source\repos\ippsample\vcnet\regex\engine.c(205,35): warning C4244: '=': '__int64'에서 'regoff_t'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\cch\source\repos\ippsample\vcnet\regex\engine.c(397,37): warning C4244: '=': '__int64'에서 'regoff_t'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\cch\source\repos\ippsample\vcnet\regex\engine.c(402,37): warning C4244: '=': '__int64'에서 'regoff_t'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\cch\source\repos\ippsample\vcnet\regex\engine.c(590,36): warning C4244: '=': '__int64'에서 'regoff_t'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\cch\source\repos\ippsample\vcnet\regex\engine.c(601,36): warning C4244: '=': '__int64'에서 'regoff_t'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\cch\source\repos\ippsample\vcnet\regex\engine.c(204,39): warning C4244: '=': '__int64'에서 'regoff_t'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\cch\source\repos\ippsample\vcnet\regex\engine.c(205,35): warning C4244: '=': '__int64'에서 'regoff_t'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\cch\source\repos\ippsample\vcnet\regex\engine.c(397,37): warning C4244: '=': '__int64'에서 'regoff_t'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\cch\source\repos\ippsample\vcnet\regex\engine.c(402,37): warning C4244: '=': '__int64'에서 'regoff_t'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\cch\source\repos\ippsample\vcnet\regex\engine.c(590,36): warning C4244: '=': '__int64'에서 'regoff_t'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\cch\source\repos\ippsample\vcnet\regex\engine.c(601,36): warning C4244: '=': '__int64'에서 'regoff_t'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+  regerror.c
+  regcomp.c
+C:\Users\cch\source\repos\ippsample\vcnet\regex\regcomp.c(118,48): warning C4267: '=': 'size_t'에서 'sopno'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\cch\source\repos\ippsample\vcnet\regex\regcomp.c(254,21): warning C4267: '=': 'size_t'에서 'sopno'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\cch\source\repos\ippsample\vcnet\regex\regcomp.c(474,21): warning C4267: '=': 'size_t'에서 'sopno'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\cch\source\repos\ippsample\vcnet\regex\regcomp.c(805,20): warning C4244: '=': '__int64'에서 'int'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\cch\source\repos\ippsample\vcnet\regex\regcomp.c(1062,3): warning C4267: '-=': 'size_t'에서 'uch'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\cch\source\repos\ippsample\vcnet\regex\regcomp.c(1381,37): warning C4267: '=': 'size_t'에서 'sop'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+  코드를 생성하고 있습니다...
+     x64\Debug\regex.lib 라이브러리 및 x64\Debug\regex.exp 개체를 생성하고 있습니다.
+  regex.vcxproj -> C:\Users\cch\source\repos\ippsample\vcnet\x64\Debug\regex.dll

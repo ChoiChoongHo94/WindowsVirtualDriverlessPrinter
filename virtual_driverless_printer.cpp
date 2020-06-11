@@ -53,6 +53,7 @@ VirtualDriverlessPrinter::VirtualDriverlessPrinter(const std::string& name, cons
 	color = DeviceCapabilities(windows_printer_name_, windows_printer_name_, DC_COLORDEVICE, NULL, NULL);
 	//num_resolutions = DeviceCapabilities(windows_printer_name_, windows_printer_name_, DC_ENUMRESOLUTIONS, (LPWSTR)poutput, NULL);
 
+	auto& printer_type_ref = const_cast<cups_ptype_t&>(printer_type_);
 	if (collate > 0) {
 		const char* multiple_document_handling[] = {
 			/*
@@ -65,25 +66,25 @@ VirtualDriverlessPrinter::VirtualDriverlessPrinter(const std::string& name, cons
 			"separate-documents-collated-copies" }; // {a(1), a(2), ..., a(1), a(2), ...}, {b(1), b(2), ..., b(1), b(2), ...}
 		ippAddString(attrs_, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_KEYWORD), "multiple-document-handling-default", NULL, multiple_document_handling[0]);
 		ippAddStrings(attrs_, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_KEYWORD), "multiple-document-handling-supported", sizeof(multiple_document_handling) / sizeof(multiple_document_handling[0]), NULL, multiple_document_handling);
-		printer_type_ &= CUPS_PRINTER_COLLATE;
+		printer_type_ref &= CUPS_PRINTER_COLLATE;
 	}
 	if (copies > 0) {
 		ippAddInteger(attrs_, IPP_TAG_PRINTER, IPP_TAG_INTEGER, "copies-default", 1);
 		ippAddRange(attrs_, IPP_TAG_PRINTER, "copies-supported", 1, 99); // FIXME possibility
-		printer_type_ &= CUPS_PRINTER_COPIES;
+		printer_type_ref &= CUPS_PRINTER_COPIES;
 	}
 	if (duplex > 0) {
 		const char* sides_supported[] = { "one-sided", "two-sided-long-edge", "two-sided-short-edge" };
 		ippAddString(attrs_, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_KEYWORD), "sides-default", NULL, sides_supported[0]);
 		ippAddStrings(attrs_, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_KEYWORD), "sides-supported", sizeof(sides_supported) / sizeof(sides_supported[0]), NULL, sides_supported);
-		printer_type_ &= CUPS_PRINTER_DUPLEX;
+		printer_type_ref &= CUPS_PRINTER_DUPLEX;
 	}
 	if (color > 0) {
 		const char* print_color_mode_supported[] = { "color", "monochrome" };
 		ippAddString(attrs_, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_KEYWORD), "print-color-mode-default", NULL, print_color_mode_supported[0]);
 		ippAddStrings(attrs_, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_KEYWORD), "print-color-mode-supported", sizeof(print_color_mode_supported) / sizeof(print_color_mode_supported[0]), NULL, print_color_mode_supported);
 		ippAddBoolean(attrs_, IPP_TAG_PRINTER, "color-supported", true);
-		printer_type_ &= CUPS_PRINTER_COLOR;
+		printer_type_ref &= CUPS_PRINTER_COLOR;
 	}
 	//if (num_resolutions > 0) {}
 
@@ -115,6 +116,12 @@ VirtualDriverlessPrinter::VirtualDriverlessPrinter(const std::string& name, cons
 	ippAddString(attrs_, IPP_TAG_PRINTER, IPP_TAG_NAME, "printer-name", NULL, name_.c_str());
 	ippAddString(attrs_, IPP_TAG_PRINTER, IPP_TAG_URI, "printer-uuid", NULL, uuid_.c_str());
 
+	// mutex
+	if ((mutex_jobs_ = CreateMutex(NULL, FALSE, NULL)) == nullptr) {
+		std::cerr << "CreateMutex is failed! <- " << GetLastError() << '\n';
+		abort();
+	};
+
 	initBonjourService_();
 	FPDF_InitLibrary();
 
@@ -137,8 +144,9 @@ void VirtualDriverlessPrinter::initBonjourService_() {
 		service_name.assign(tmp_ws.begin(), tmp_ws.end());
 	}
 
+	auto& bonjour_service_ref = const_cast<DNSServiceRef&>(bonjour_service_);
 	DNSServiceErrorType err;
-	if (err = (DNSServiceCreateConnection(&bonjour_service_)) != kDNSServiceErr_NoError) {
+	if (err = (DNSServiceCreateConnection(&bonjour_service_ref)) != kDNSServiceErr_NoError) {
 		std::cerr << "Bonjour Connection is failed! <- Error code: " << err << '\n';
 		abort();
 	}
@@ -174,7 +182,7 @@ void VirtualDriverlessPrinter::initBonjourService_() {
 		TXTRecordSetValue(&txt_record, "UUID", str_value.size() - 9, str_value.c_str());
 	}
 
-	if ((err = DNSServiceRegister(&bonjour_service_, kDNSServiceFlagsShareConnection, kDNSServiceInterfaceIndexAny, service_name.c_str(),
+	if ((err = DNSServiceRegister(&bonjour_service_ref, kDNSServiceFlagsShareConnection, kDNSServiceInterfaceIndexAny, service_name.c_str(),
 		"_ipp._tcp", NULL /* domain */, NULL /* host */, htons(port_), TXTRecordGetLength(&txt_record), TXTRecordGetBytesPtr(&txt_record), NULL, NULL)) != kDNSServiceErr_NoError) {
 		std::cerr << "Bonjour Service registration is failed! <- Error code: " << err << '\n';
 		abort();
@@ -400,29 +408,40 @@ bool VirtualDriverlessPrinter::printFile(const std::shared_ptr<PrintJob>& job) {
 	return true;
 }
 
-bool VirtualDriverlessPrinter::addJob(std::shared_ptr<PrintJob> job) {
-	int job_id = job->getId();
+bool VirtualDriverlessPrinter::addJob(int job_id, std::shared_ptr<PrintJob> job) {
 	assert(job_id > -1);
-	//jobs_mutex_.lock();
+	if (WaitForSingleObject(mutex_jobs_, INFINITE) != WAIT_OBJECT_0) {
+		std::cerr << "WaitForSingleObject is failed! <- " << GetLastError() << '\n';
+		return false;
+	}
 	//TODO: duplicate check -> return false;
 	jobs_.insert(std::make_pair(job_id , job));
 	//TODO: kMaxJobs check
-	//jobs_mutex_.unlock();
+	ReleaseMutex(mutex_jobs_);
 	return true;
 }
 
-void VirtualDriverlessPrinter::removeJob(int job_id) {
-	//jobs_mutex_.lock();
+bool VirtualDriverlessPrinter::removeJob(int job_id) {
+	if (WaitForSingleObject(mutex_jobs_, INFINITE) != WAIT_OBJECT_0) {
+		std::cerr << "WaitForSingleObject is failed! <- " << GetLastError() << '\n';
+		return false;
+	}
 	jobs_.erase(job_id);
-	//jobs_mutex_.unlock();
+	ReleaseMutex(mutex_jobs_);
+	return true;
 }
 
 std::shared_ptr<PrintJob> VirtualDriverlessPrinter::getJob(int job_id) const {
-	auto it = jobs_.find(job_id);
-	if (it != jobs_.end()) {
-		return it->second;
+	if (WaitForSingleObject(mutex_jobs_, INFINITE) != WAIT_OBJECT_0) {
+		std::cerr << "WaitForSingleObject is failed! <- " << GetLastError() << '\n';
+		return nullptr;
 	}
-	return nullptr;
+	auto it = jobs_.find(job_id);
+	if (it == jobs_.end()) {
+		return nullptr;
+	}
+	ReleaseMutex(mutex_jobs_);
+	return it->second;
 }
 
 static unsigned WINAPI ProcessIPPThread(LPVOID ipp_client) {
