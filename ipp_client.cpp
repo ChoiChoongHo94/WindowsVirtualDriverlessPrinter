@@ -1,5 +1,6 @@
 #include <Windows.h>
 #include <iostream>
+#include <sstream>
 #include <cups/ipp.h>
 #include <cups/config.h>
 #include <cstring>
@@ -9,92 +10,91 @@
 #include "my_definitions.h"
 #include "my_util.h"
 
-static std::shared_ptr<FileLogger> S_ACCESS_LOGGER = nullptr;
-void INIT_ACCESS_LOGGER(const std::string& filename) {
-	char* userhome_dir;
-	size_t num_elements;
-	if (_dupenv_s(&userhome_dir, &num_elements, "USERPROFILE") != 0) {
-		abort();
-	}
-	S_ACCESS_LOGGER = std::make_shared<FileLogger>(std::string(userhome_dir) + "\\" + filename);
-	free(userhome_dir);
+static std::unique_ptr<FileLogger> IPP_ACCESS_LOGGER = nullptr;
+void INIT_IPP_ACCESS_LOGGER(const std::string& filename) {
+	std::string total_path = Util::get_userhome_dir() + "\\" + filename;
+	IPP_ACCESS_LOGGER = std::make_unique<FileLogger>(total_path);
+	CONSOLE_LOGGER->writeLog(std::string("ipp access log path: ") + total_path);
 }
 
-// TODO: #define LOG_ACCESS(...) S_ACCESS_LOGGER.writef(..
+//#define LOG_IPP_ACCESS IPP_ACCESS_LOGGER->writeLog;
+//#define LOG_IPP_ACCESS_F IPP_ACCESS_LOGGER->writefLog;
 
 namespace TestPrint {
 	void printCupsArray(cups_array_t* ca) {
-		std::cerr << "============================" << __FUNCTION__ << "============================" << '\n';
-		std::cerr << "Array count: " << cupsArrayCount(ca) << '\n';
+		std::string buffer = "Requested Array(CUPS Array): ";
 		for (auto element = cupsArrayFirst(ca); element; element = cupsArrayNext(ca)) {
-			std::cerr << (char*)element << '\n';
+			buffer += std::string((char*)element) + ", ";
 		}
-		std::cerr << "=================================================================================" << '\n';
+		buffer.pop_back();
+		buffer.pop_back();
+		CONSOLE_LOGGER->writeLog(buffer);
 	}
 
 	void printIPPAttrs(ipp_t* ipp_msg) {
-		std::cerr << "============================" << __FUNCTION__ << "=============================" << '\n';
-		for (auto attr = ippFirstAttribute(ipp_msg); attr; attr = ippNextAttribute(ipp_msg)) {
-			auto value_tag = ippGetValueTag(attr);
-			std::cerr << ippGetName(attr) << ", " <<
-				ippTagString(ippGetGroupTag(attr)) << "/" << ippTagString(value_tag);
-			if (value_tag >= IPP_TAG_TEXT) {
-				std::cerr << ", " << ippGetString(attr, 0, NULL) << '\n';
+		std::string buffer = "IPP Attributes: ";
+		auto attr = ippFirstAttribute(ipp_msg);
+		ipp_tag_t curr_group_tag = ippGetGroupTag(attr);
+		buffer += std::string(ippTagString(curr_group_tag)) + "(" + Util::get_attr_stamp(attr)+ ", ";
+		for (attr = ippNextAttribute(ipp_msg); attr != nullptr; attr = ippNextAttribute(ipp_msg)) {
+			if (curr_group_tag != ippGetGroupTag(attr)) {
+				curr_group_tag = ippGetGroupTag(attr);
+				buffer.pop_back();
+				buffer.pop_back();
+				buffer += std::string("), ") + ippTagString(curr_group_tag) + "(";
 			}
-			else {
-				std::cerr << '\n';
-			}
+			buffer += Util::get_attr_stamp(attr) + ", ";
 		}
-		std::cerr << "=================================================================================" << '\n';
+		buffer.pop_back();
+		buffer.pop_back();
+		buffer += ")";
+		CONSOLE_LOGGER->writeLog(buffer);
 	}
 }
 
 HTTPClient::HTTPClient(int sock_fd) {
-	std::cerr << "[HTTPClient(" << this << ") ctor]" << '\n';
+	std::stringstream log_ss;
 	char hostname[1024];
 	if ((http_ = httpAcceptConnection(sock_fd, 1)) != nullptr) {
-		//char uri[1024];
 		httpGetHostname(http_, hostname, sizeof(hostname));
-		hostname_ = hostname;
-		
+		const_cast<std::string&>(hostname_) = hostname;
 	}
-	//operation_ = httpGetState(http_);
-	//else {
-		std::cerr << "httpAcceptConnection(), error code: " << httpError(http_) <<
-			", initial state: " << httpStateString(httpGetState(http_)) << '\n';
-		std::cerr << "Client hostname: " << hostname_ << '\n';
-	//}
-		//std::cerr << "HTTPClient created, hostname_: " << hostname << '\n';
+	else {
+
+	}
+	const_cast<clock_t&>(start_) = clock();
+	log_ss << Util::get_timestamp() << " [" << hostname_ << "] accept HTTP connection.";
+	CONSOLE_LOGGER->writeLog(log_ss.str());
+	//CONSOLE_LOGGER->writefLog("%s [%s] %s start.", Util::get_timestamp(), hostname_, httpStateString(httpGetState(http_)));
 }
 
 IPPClient::IPPClient(VirtualDriverlessPrinter* vdp, int sock_fd) : vdp_(vdp) {
-	std::cerr << "[IPPClient(" << this << ") ctor]" << '\n';
 	http_client_ = std::make_shared<HTTPClient>(sock_fd);
 }
 
 HTTPClient::~HTTPClient() {
-	std::cerr << "[HTTPClient(" << this << ") dtor] Closing connection from '" << hostname_ << "'\n";
-	httpFlushWrite(http_);
-	httpClose(http_);
+	std::stringstream log_ss;
+	//httpFlushWrite(http_);
+	//httpClose(http_);
+	log_ss << Util::get_timestamp() << " [" << hostname_ << "] close HTTP connection with status'" << httpStatus(final_status_) << "'. (" << std::to_string(clock() - start_) << "ms)\n";
+	CONSOLE_LOGGER->writeLog(log_ss.str());
+	//CONSOLE_LOGGER->writefLog("%s [%s] %s end. (%s)", Util::get_timestamp(), hostname_, httpStateString(httpGetState(http_)), std::to_string(clock() - start_));
 }
 
 IPPClient::~IPPClient() {
-	std::cerr << "[IPPClient(" << this << ") dtor]" << '\n';
-	if (request_ != nullptr) ippDelete(request_);
-	if (response_ != nullptr) ippDelete(response_);
+	//if (request_ != nullptr) ippDelete(request_);
+	//if (response_ != nullptr) ippDelete(response_);
 }
 
 bool HTTPClient::process(ipp_t*& ipp_request) {
-	// Test
-	if (hostname_ != "192.168.8.118") {
-		std::cerr << "@@ not allowed client @@" << '\n';
-		if (!respond(HTTP_STATUS_NOT_IMPLEMENTED, "", "", 0, nullptr)) {
-			std::cerr << "@@ respond false @@" << '\n';
-		}
-		return false;
-	}
+	// TMP TEST
+	//if (hostname_ != "192.168.8.118") {
+	//	std::cerr << "@@ not allowed client @@" << '\n';
+	//	assert(respond(HTTP_STATUS_NOT_IMPLEMENTED, "", "", 0, nullptr));
+	//	return false;
+	//}
+	//CONSOLE_LOGGER->writeLog("my pc is entranced!");
 
-	std::cerr << "[" << __FUNCTION__ << "] Enter" << '\n';
 	char uri[1024];
 	char scheme[32];
 	char userpass[128];
@@ -105,79 +105,61 @@ bool HTTPClient::process(ipp_t*& ipp_request) {
 	http_status_t status;
 	bool ret = true;
 
-	// 1) '연결 확인 중'로직이 이부분과 관련이 있나?
 	while ((state = httpReadRequest(http_, uri, sizeof(uri))) == HTTP_STATE_WAITING)
 		Sleep(1);
 	 
-	// 2)
 	if (state == HTTP_STATE_ERROR) {
 		if (httpError(http_) == EPIPE) { // error case of being set to ignoring any signals when the socket or pipe is disconnected
 			//respond(HTTP_STATUS_BAD_REQUEST, "", "", 0, nullptr);
-			std::cerr << "'" << hostname_ << "' client closed connection!" << '\n';
+			CONSOLE_LOGGER->writeLog(std::string("'") + hostname_ + "' client closed connection!");
 		}
 		else {
 			//respond(HTTP_STATUS_BAD_REQUEST, NULL, NULL, 0, nullptr);
-			std::cerr << "'" << hostname_ << "' bad request line! <- " << httpError(http_) << '\n';
+			CONSOLE_LOGGER->writeLog(std::string("'") + hostname_ + "' bad request line!");
 		}
-		ret = false; goto EXIT;
+		ret = false; goto END;
 	}
 	else if (state == HTTP_STATE_UNKNOWN_METHOD) {
-		std::cerr << "'" << hostname_ << "' bad/unknown operation!" << '\n';
+		CONSOLE_LOGGER->writeLog(std::string("'") + hostname_ + "' bad/unknown operation!");
 		respond(HTTP_STATUS_BAD_REQUEST, NULL, NULL, 0, nullptr);
-		ret = false; goto EXIT;
+		ret = false; goto END;
 	}
 	else if (state == HTTP_STATE_UNKNOWN_VERSION) {
-		std::cerr << "'" << hostname_ << "' bad HTTP version!" << '\n';
+		CONSOLE_LOGGER->writeLog(std::string("'") + hostname_ + "' bad HTTP version!");
 		respond(HTTP_STATUS_BAD_REQUEST, NULL, NULL, 0, nullptr);
-		ret = false; goto EXIT;
+		ret = false; goto END;
 	}
 
-	/*
-	std::cerr << "'" << hostname_ << "' " << httpStateString(state) << '\n';
-	//operation_ = httpGetState(http_);
-	while ((status = httpUpdate(http_)) == HTTP_STATUS_CONTINUE);
-
-	if (status != HTTP_STATUS_OK) {
-		respond(HTTP_STATUS_BAD_REQUEST, NULL, NULL, 0, NULL);
-		return false;
-	}
-	*/
-
-	// 3)
 	if (httpSeparateURI(HTTP_URI_CODING_MOST, uri, scheme, sizeof(scheme),
 		userpass, sizeof(userpass),
 		hostname, sizeof(hostname), &port, resource, sizeof(resource)) < HTTP_URI_STATUS_OK &&
 		(state != HTTP_STATE_OPTIONS || strcmp(uri, "*"))) {
 		respond(HTTP_STATUS_BAD_REQUEST, NULL, NULL, 0, nullptr);
-		ret = false; goto EXIT;
+		ret = false; goto END;
 	}
 
 	/* process the request */
 	// ippsample/ippeveprinter.c:5940
-	// 4)
-	start_ = time(NULL);
-	operation_ = httpGetState(http_);
-	std::cerr << "HTTP Operation: " << httpStateString(operation_) << '\n';
+	const_cast<std::string&>(resource_) = resource;
+	const_cast<http_state_t&>(operation_) = httpGetState(const_cast<http_t*>(http_));
 	while ((status = httpUpdate(http_)) == HTTP_STATUS_CONTINUE);
 
 	if (status != HTTP_STATUS_OK) {
 		respond(HTTP_STATUS_BAD_REQUEST, "", "", 0, nullptr);
-		ret = false; goto EXIT;
+		ret = false; goto END;
 	}
 
 	/* validate the header of the HTTP request */
-	// 5)
 	if (!httpGetField(http_, HTTP_FIELD_HOST)[0] &&
 		httpGetVersion(http_) >= HTTP_VERSION_1_1) {
-		std::cerr << "Missing 'Host:' field in the HTTP/1.1 and higher version request!" << '\n';
+		//std::cerr << "Missing 'Host:' field in the HTTP/1.1 and higher version request!" << '\n';
 		respond(HTTP_STATUS_BAD_REQUEST, NULL, NULL, 0, nullptr);
-		ret = false; goto EXIT;
+		ret = false; goto END;
 	}
 
-	// 6)
 	if (std::string{ "Upgrade" } == httpGetField(http_, HTTP_FIELD_CONNECTION)) {
 		if (!respond(HTTP_STATUS_NOT_IMPLEMENTED, NULL, NULL, 0, nullptr)) {
-			ret = false; goto EXIT;
+			ret = false; goto END;
 		}
 	}
 
@@ -187,22 +169,21 @@ bool HTTPClient::process(ipp_t*& ipp_request) {
 		(operation_ == HTTP_STATE_POST || operation_ == HTTP_STATE_PUT)) {
 		if (status == HTTP_STATUS_CONTINUE) {
 			if (!respond(HTTP_STATUS_CONTINUE, "", "", 0, nullptr)) {
-				ret = false; goto EXIT;
+				ret = false; goto END;
 			}
 		}
 		else {
 			if (!respond(HTTP_STATUS_EXPECTATION_FAILED, NULL, NULL, 0, nullptr)) {
-				ret = false; goto EXIT;
+				ret = false; goto END;
 			}
 		}
 	}
 	
 	//std::string encoding = httpGetContentEncoding(http_);
-	// 7)
 	switch (operation_) {
 	case HTTP_STATE_POST:
 		if (std::string{ "application/ipp" } != httpGetField(http_, HTTP_FIELD_CONTENT_TYPE)) {
-			ret = respond(HTTP_STATUS_BAD_REQUEST, NULL, NULL, 0, nullptr); goto EXIT;
+			ret = respond(HTTP_STATUS_BAD_REQUEST, NULL, NULL, 0, nullptr); goto END;
 		}
 
 		/* IPP request */
@@ -211,8 +192,7 @@ bool HTTPClient::process(ipp_t*& ipp_request) {
 			ipp_state != IPP_STATE_DATA;
 			ipp_state = ippRead(http_, ipp_request)) {
 			if (ipp_state == IPP_STATE_ERROR) {
-				//std::cerr << "IPP read error (%s)!" << ippStateString(ipp_state) << '\n';
-				respond(HTTP_STATUS_BAD_REQUEST, NULL, NULL, 0, nullptr);
+				respond(HTTP_STATUS_BAD_REQUEST, "", "", 0, nullptr);
 			}
 		}
 		//TestPrint::printIPPAttrs(ipp_request);
@@ -221,7 +201,7 @@ bool HTTPClient::process(ipp_t*& ipp_request) {
 	case HTTP_STATE_OPTIONS:
 	case HTTP_STATE_HEAD:
 	case HTTP_STATE_GET:
-		ret =  respond(HTTP_STATUS_NOT_FOUND, NULL, NULL, 0, nullptr);
+		ret = respond(HTTP_STATUS_NOT_FOUND, NULL, NULL, 0, nullptr);
 		break;
 
 	default:
@@ -229,9 +209,7 @@ bool HTTPClient::process(ipp_t*& ipp_request) {
 		break;
 	}
 
-EXIT:
-	std::cerr << "[" << __FUNCTION__ << "] Exit state/status: " << httpStateString(httpGetState(http_)) << "/" <<
-		httpStatus(httpGetStatus(http_)) << '\n';
+END:
 	return ret;
 }
 
@@ -254,7 +232,7 @@ bool HTTPClient::respond(http_status_t status, std::string content_encoding,
 	else
 		message[0] = '\0';
 
-	/* send HTTP response header */
+	/* set HTTP response header */
 	httpClearFields(http_);
 	if (status == HTTP_STATUS_METHOD_NOT_ALLOWED || httpGetState(http_) == HTTP_STATE_OPTIONS) {
 		httpSetField(http_, HTTP_FIELD_ALLOW, "GET, HEAD, OPTIONS, POST");
@@ -275,56 +253,53 @@ bool HTTPClient::respond(http_status_t status, std::string content_encoding,
 
 	httpSetLength(http_, length);
 
-	std::cerr << "[" << __FUNCTION__ << "] httpWriteResponse: ";
+	bool ret = true;
 	if (httpWriteResponse(http_, status) < 0) {
-		std::cerr << "failed! <- " << httpStateString(httpGetState(http_)) << "/" << httpStatus(status) << '\n';
-		return false;
+		ret = false;
 	}
-	std::cerr << httpStateString(httpGetState(http_)) << "/" << httpStatus(status);
 
 	/* send the response */
-	if (message[0]) {
+	if (ret && message[0]) {
 		if (httpPrintf(http_, "%s", message) < 0) {
-			return false;
+			ret = false;
 		}
 		if (httpWrite2(http_, "", 0) < 0) {
-			return false;
+			ret = false;
 		}
-	} else if (ipp_response) {
+	} else if (ret && ipp_response) {
 		ippSetState(ipp_response, IPP_STATE_IDLE);
 		ipp_state_t state = ippWrite(http_, ipp_response);
-		std::cerr << ", " << ippStateString(state);
 		if (state != IPP_STATE_DATA) {
-			return false;
+			ret = false;
 		}
 	}
-	std::cerr << '\n';
-	return true;
+
+	const_cast<http_status_t&>(final_status_) = status;
+	return ret;
 }
 
 bool IPPClient::process() {
-	std::cerr << "[" << __FUNCTION__ << "] Enter" << '\n';
 	bool http_respond_ret = true;
 	http_t* http = http_client_->getConnection();
-	while (http_respond_ret && httpWait(http, 30000)) {
+	while (http_respond_ret && httpWait(http, 100)) {
 		bool http_process_ret = http_client_->process(request_);
 		if (http_process_ret && request_ == nullptr) {
-			std::cerr << "The HTTP request is processed. (IPP request 'request_' is NULL)" << '\n';
+			//std::cerr << "The HTTP request is processed. (IPP request 'request_' is NULL)" << '\n';
 			return true;
 		}
 		else if (!http_process_ret) {
-			std::cerr << "The HTTP Process is failed!" << '\n';
+			//std::cerr << "The HTTP Process is failed!" << '\n';
 			return false;
 		}
 
-		std::cerr << "IPP Operation: " << ippOpString(ippGetOperation(request_)) << ", ";
+		//std::cerr << "IPP Operation: " << ippOpString(ippGetOperation(request_)) << ", ";
 		response_ = ippNewResponse(request_);
 		int major, minor;
 		major = ippGetVersion(request_, &minor);
 		if (!((major == 2 && minor == 0) || (major == 1 && minor == 1))) {
 			respond(IPP_STATUS_ERROR_VERSION_NOT_SUPPORTED, "Bad request version numver %d.%d!", major, minor);
 		}
-		else if ((ipp_request_id_ = ippGetRequestId(request_)) <= 0) {
+		else if ((const_cast<int&>(ipp_request_id_) = ippGetRequestId(request_)) <= 0) {
 			respond(IPP_STATUS_ERROR_BAD_REQUEST, "Bad request-id %d!", ipp_request_id_);
 		}
 		else if (!ippFirstAttribute(request_)) {
@@ -337,6 +312,13 @@ bool IPPClient::process() {
 			ipp_attribute_t* language = nullptr;
 			ipp_attribute_t* attr = nullptr;
 			std::string name;
+
+			if ((attr = ippFindAttribute(request_, "requesting-user-name", IPP_TAG_NAME)) != NULL) {
+				const_cast<std::string&>(username_) = std::string{ ippGetString(attr, 0, NULL) };
+			}
+			else {
+				const_cast<std::string&>(username_) = "anonymous";
+			}
 
 			/* get group tag */
 			for (attr = ippFirstAttribute(request_), group = ippGetGroupTag(attr);
@@ -385,6 +367,7 @@ bool IPPClient::process() {
 					char resource[256];
 					int port;
 
+					// TODO: HTTP에서 중복된거 없는지
 					name = ippGetName(uri);
 					if (httpSeparateURI(HTTP_URI_CODING_ALL, ippGetString(uri, 0, NULL),
 						scheme, sizeof(scheme),
@@ -399,17 +382,10 @@ bool IPPClient::process() {
 						respond(IPP_STATUS_ERROR_NOT_FOUND, "%s %s not found!", name, ippGetString(uri, 0, NULL));
 					}
 					else {
-						std::cerr << "uri: " << ippGetString(uri, 0, NULL) << '\n';
 						/* processing the operation */
-						ipp_operation_ = ippGetOperation(request_);
+						const_cast<ipp_op_t&>(ipp_operation_) = ippGetOperation(request_);
+						CONSOLE_LOGGER->writeLog(Util::get_timestamp() + " " + stampHostAndUser() + "incoming IPP OP: " + ippOpString(ipp_operation_));
 						switch (ipp_operation_) {
-
-						case IPP_OP_CREATE_JOB:
-							break;
-
-						case IPP_OP_SEND_DOCUMENT:
-							break;
-
 						case IPP_OP_PRINT_JOB:
 							ippPrintJob_();
 							break;
@@ -427,6 +403,11 @@ bool IPPClient::process() {
 							break;
 
 						/* TODO
+						case IPP_OP_CREATE_JOB:
+							break;
+
+						case IPP_OP_SEND_DOCUMENT:
+							break;
 						case IPP_OP_PRINT_URI:
 							break;
 						case IPP_OP_VALIDATE_JOB:
@@ -458,34 +439,39 @@ bool IPPClient::process() {
 		if (ippGetStatusCode(response_) >= IPP_STATUS_ERROR_BAD_REQUEST) {
 			break;
 		}
+
+		{/* log to the ipp access log file */
+			http_version_t http_version = httpGetVersion(http_client_->getConnection());
+			const std::string http_operation = http_client_->getOperationStr();
+			ipp_attribute_t* requesting_username_attr = ippFindAttribute(request_, "requesting-user-name", IPP_TAG_NAME);
+			char access_log_buffer[4096];
+			//const std::string hostname = http_client_->getHostname();
+			//const std::string timestamp = Util::get_timestamp();
+			//const std::string operation = http_client_->getOperationStr();
+			//const std::string resource = http_client_->getResourceStr();
+			//const int status_code = http_client_->getFinalStatusCode();
+			//const int content_length = http_client_->getContentLength();
+			//const std::string ipp_operation = ippOpString(ipp_operation_);
+			//const std::string ipp_status_str = ippErrorString(final_status_);
+			int written_size = _snprintf_s(access_log_buffer, sizeof(access_log_buffer), "%s %s - [%s] \"%s %s HTTP/%s\" %d %d %s %s",
+				http_client_->getHostname().c_str(),
+				requesting_username_attr != NULL ? ippGetString(requesting_username_attr, 0, NULL) : "-",
+				Util::get_timestamp().c_str(),
+				http_operation.substr(http_operation.rfind('_') + 1).c_str(), http_client_->getResourceStr().c_str(),
+				http_version == HTTP_VERSION_1_1 ? "1.1" : (http_version == HTTP_VERSION_1_0 ? "1.1" : "0.9"),
+				http_client_->getFinalStatusCode(), http_client_->getContentLength(),
+				ippOpString(ipp_operation_), ippErrorString(final_status_));
+			assert(written_size > 0 && written_size < sizeof(access_log_buffer));
+			IPP_ACCESS_LOGGER->writeLog(access_log_buffer);
+			CONSOLE_LOGGER->writeLog(access_log_buffer);
+		}
+		CONSOLE_LOGGER->writeLog(std::string("IPP state: ") + ippStateString(ippGetState(request_)) + ", HTTP state: " + httpStateString(httpGetState(http_client_->getConnection())));
 	} // 'while(httpWait(..))' loop end
-
-	std::cerr << "[" << __FUNCTION__ << "] Exit state/status: " << ippStateString(ippGetState(response_)) << "/" <<
-		ippErrorString(ippGetStatusCode(response_)) << ", Return: " << http_respond_ret << '\n';
+	httpFlushWrite(http);
+	httpClose(http);
+	if (request_ != nullptr) ippDelete(request_);
+	if (response_ != nullptr) ippDelete(response_);
 	return http_respond_ret;
-}
-
-template <typename... Args>
-void IPPClient::respond(ipp_status_t status, const std::string& message_format, Args... args) {
-	ippSetStatusCode(response_, status);
-	std::string formatted = "";
-	if (!message_format.empty()) {
-		ipp_attribute_t* attr = ippFindAttribute(response_, "status-message", IPP_TAG_TEXT);
-		if (attr) {
-			ippSetStringf(response_, &attr, 0, message_format.c_str(), args...);
-		}
-		else {
-			attr = ippAddStringf(response_, IPP_TAG_OPERATION, IPP_TAG_TEXT, "status-message", NULL, message_format.c_str(), args...);
-		}
-
-		formatted = ippGetString(attr, 0, NULL);
-	}
-
-	std::cerr << "[" << __FUNCTION__ << "] " << ippOpString(ipp_operation_) << ", " << ippErrorString(status);
-	if (!formatted.empty()) {
-		std::cerr << " (" << formatted << ")";
-	}
-	std::cerr << '\n';
 }
 
 void IPPClient::respondUnsupported(ipp_attribute_t* attr) {
@@ -496,9 +482,11 @@ void IPPClient::respondUnsupported(ipp_attribute_t* attr) {
 	ippSetGroupTag(response_, &temp, IPP_TAG_UNSUPPORTED_GROUP);
 }
 
+std::string IPPClient::stampHostAndUser() const {
+	return "[" + http_client_->getHostname() + ":" + username_ + "] ";
+}
+
 void IPPClient::ippGetPrinterAttributes_() {
-	std::cerr << "[" << __FUNCTION__ << "] Enter" << '\n';
-	//TestPrint::printIPPAttrs(request_);
 	cups_array_t* ra = ippCreateRequestedArray(request_);
 	//TestPrint::printCupsArray(ra);
 
@@ -508,7 +496,7 @@ void IPPClient::ippGetPrinterAttributes_() {
 	// copy attrs
 	
 	//TestPrint::printIPPAttrs(response_);
-	Util::copy_attributes(response_, vdp_->getAttributes(), NULL, IPP_TAG_ZERO, IPP_TAG_CUPS_CONST);
+	Util::copy_attributes(response_, vdp_->getAttributes(), NULL, IPP_TAG_ZERO, 1);
 	//TestPrint::printIPPAttrs(response_);
 
 	/*
@@ -524,16 +512,15 @@ void IPPClient::ippGetPrinterAttributes_() {
 	}
 	// TODO: unlock
 
-	//cupsArrayDelete(ra);
+	cupsArrayDelete(ra);
 	//TestPrint::printIPPAttrs(response_);
-	std::cerr << "[" << __FUNCTION__ << "] Exit" << '\n';
 }
 
 void IPPClient::ippPrintJob_() {
-	std::cerr << "[" << __FUNCTION__ << "] Enter" << '\n';
 	if (!validJobAttributes_() || !validDocAttributes_()) {
 		// httpflush, flush_document_data
 		httpFlush(http_client_->getConnection());
+		respond(IPP_STATUS_ERROR_BAD_REQUEST, std::string(__FUNCTION__) + ": Invalid 'Job' or 'Doc' attributes in request.");
 		return;
 	}
 
@@ -542,7 +529,7 @@ void IPPClient::ippPrintJob_() {
 		return;
 	}
 
-	auto job = std::make_shared<PrintJob>(request_, vdp_);
+	auto job = std::make_shared<PrintJob>(http_client_->getHostname(), username_, request_, vdp_);
 	if (job == nullptr) {
 		respond(IPP_STATUS_ERROR_BUSY, "Currently printing another job!");
 		return;
@@ -555,12 +542,11 @@ void IPPClient::ippPrintJob_() {
 		job->setState(IPP_JSTATE_COMPLETED);
 		vdp_->printFile(job);
 		respond(IPP_STATUS_OK, "");
-		std::cerr << "[" << __FUNCTION__ << "] Exit, Success" << '\n';
 	}
 	else {
 		// respond(...) is already called in the finishDocumentData_()
 		job->setState(IPP_JSTATE_ABORTED);
-		std::cerr << "[" << __FUNCTION__ << "] Exit, Failed" << '\n';
+		respond(IPP_STATUS_ERROR_INTERNAL, std::string(__FUNCTION__) + ": Printing failed.");
 	}
 	job->setCompletedTime(time(NULL));
 	
@@ -571,8 +557,6 @@ void IPPClient::ippPrintJob_() {
 };
 
 void IPPClient::ippCreateJob_() {
-	std::cerr << "[" << __FUNCTION__ << "] Enter" << '\n';
-
 	if (haveDocumentData_()) {
 		httpFlush(http_client_->getConnection());
 		respond(IPP_STATUS_ERROR_BAD_REQUEST, "Document data must not be supplied from this IPP message!");
@@ -583,18 +567,15 @@ void IPPClient::ippCreateJob_() {
 		return;
 	}
 
-	auto job = std::make_shared<PrintJob>(request_, vdp_);
+	auto job = std::make_shared<PrintJob>(http_client_->getHostname(), username_, request_, vdp_);
 	if (!vdp_->addJob(job->getId(), job)) {
 		respond(IPP_STATUS_ERROR_BUSY, "Currently the printer is busy..");
 	}
 
 	respond(IPP_STATUS_OK, "");
-	std::cerr << "[" << __FUNCTION__ << "] Exit" << '\n';
 };
 
 void IPPClient::ippSendDocument_() {
-	std::cerr << "[" << __FUNCTION__ << "] Enter" << '\n';
-
 	/* find job */
 	ipp_attribute_t* attr = ippFindAttribute(request_, "job-id", IPP_TAG_INTEGER); assert(attr != NULL);
 	int job_id = ippGetInteger(attr, 0);
@@ -616,7 +597,6 @@ void IPPClient::ippSendDocument_() {
 		respond(IPP_STATUS_ERROR_NOT_POSSIBLE, "The job is not in a pending state!");
 		return;
 	}
-
 	
 	if ((attr = ippFindAttribute(request_, "last-document", IPP_TAG_OPERATION)) == NULL) {
 		httpFlush(http_client_->getConnection());
@@ -636,12 +616,11 @@ void IPPClient::ippSendDocument_() {
 	 
 	// TODO
 	// vdp_->addJob, printFile, removeJob, ...
-
-	std::cerr << "[" << __FUNCTION__ << "] Exit" << '\n';
 };
 
 void IPPClient::ippGetJobs_() {
-	std::cerr << "[" << __FUNCTION__ << "] Enter" << '\n';
+	std::stringstream errlog_ss;
+	errlog_ss << "[" + http_client_->getHostname() + ":" + username_ + "] " << __FUNCTION__ << '\n';
 	ipp_attribute_t* attr = nullptr;
 	cups_array_t* ra = nullptr;
 	int job_comparison;
@@ -649,7 +628,8 @@ void IPPClient::ippGetJobs_() {
 	std::string which_jobs;
 	if ((attr = ippFindAttribute(request_, "which-jobs", IPP_TAG_KEYWORD)) != NULL) {
 		which_jobs = ippGetString(attr, 0, NULL);
-		std::cerr << http_client_->getHostname() << " which-jobs=" << which_jobs << '\n';
+		//std::cerr << http_client_->getHostname() << " which-jobs=" << which_jobs << '\n';
+		errlog_ss << "which-jobs=" << which_jobs << '\n';
 	}
 
 	if (which_jobs.empty() || which_jobs == "not-completed") {
@@ -666,31 +646,27 @@ void IPPClient::ippGetJobs_() {
 		return;
 	}
 
-	int limit = 0;
 	if ((attr = ippFindAttribute(request_, "limit", IPP_TAG_INTEGER)) != NULL) {
-		limit = ippGetInteger(attr, 0);
+		errlog_ss << "limit=" << ippGetInteger(attr, 0) << '\n';
 	}
-	std::cerr << http_client_->getHostname() << " Get-Jobs limit=" << limit << '\n';
 
-	int first_job_id = 1;
+	int first_job_id = 0;
 	if ((attr = ippFindAttribute(request_, "first-job-id", IPP_TAG_INTEGER)) != NULL) {
 		first_job_id = ippGetInteger(attr, 0);
+		errlog_ss << "first-job-id=" <<  first_job_id << '\n';
 	}
-	std::cerr << http_client_->getHostname() << " Get-Jobs first-job-id=" << first_job_id << '\n';
 
 	std::string username;
 	if ((attr = ippFindAttribute(request_, "my-jobs", IPP_TAG_BOOLEAN)) != NULL) {
 		bool my_jobs = ippGetBoolean(attr, 0);
-		std::cerr << http_client_->getHostname() << "Get-Jobs my-jobs=" << (my_jobs ? "true" : "false") << '\n';
-
+		errlog_ss << "my-jobs=" << std::boolalpha << my_jobs << '\n';
 		if (my_jobs) {
 			if ((attr = ippFindAttribute(request_, "requesting-user-name", IPP_TAG_NAME)) == NULL) {
 				respond(IPP_STATUS_ERROR_BAD_REQUEST, "NeedRequesting-user-name with my-jobs!");
 				return;
 			}
-
 			username = ippGetString(attr, 0, NULL);
-			std::cerr << http_client_->getHostname() << " Get-Jobs requesting-user-name=\"" << username << "\"" << '\n';
+			errlog_ss << "requesting-user-name=\"" << username << "\"" << '\n';
 		}
 	}
 
@@ -722,21 +698,22 @@ void IPPClient::ippGetJobs_() {
 	cupsArrayDelete(ra);
 	//TODO: rw unlock
 
-	std::cerr << "[" << __FUNCTION__ << "] Exit, Success" << '\n';
+	ERROR_LOGGER->writeLog(errlog_ss.str());
 }
 
 void IPPClient::ippGetJobAttributes_() {
-	std::cerr << "[" << __FUNCTION__ << "] Enter" << '\n';
+	std::stringstream errlog_ss;
+	errlog_ss << "[" + http_client_->getHostname() + ":" + username_ + "] " << __FUNCTION__ << '\n';
 	ipp_attribute_t* attr = nullptr;
 	int job_id = -1;
 	
 	/* find job */
 	if ((attr = ippFindAttribute(request_, "job-id", IPP_TAG_INTEGER)) != NULL) {
 		job_id = ippGetInteger(attr, 0);
+		errlog_ss << "job-id: " << job_id;
 	}
 	else if ((attr = ippFindAttribute(request_, "job-uri", IPP_TAG_URI)) != NULL) {
-		// FIXME
-		assert(1);
+		// TODO
 	}
 
 	//TODO: rw lock
@@ -753,12 +730,13 @@ void IPPClient::ippGetJobAttributes_() {
 	cups_array_t* ra = ippCreateRequestedArray(request_);
 	Util::copy_job_attributes(response_, job.get(), ra);
 	cupsArrayDelete(ra);
-	std::cerr << "[" << __FUNCTION__ << "] Exit" << '\n';
+	ERROR_LOGGER->writeLog(errlog_ss.str());
 }
 
 bool IPPClient::finishDocumentData_(std::shared_ptr<PrintJob> job) {
-	std::cerr << "[" << __FUNCTION__ << "] Enter" << '\n';
-
+	std::stringstream errlog_ss;
+	errlog_ss << "[" + http_client_->getHostname() + ":" + username_ + "] " << __FUNCTION__ << '\n';
+	bool ret = true;
 	size_t bytes = 0;
 	char buf[4096];
 	char err_buf[1024];
@@ -766,9 +744,10 @@ bool IPPClient::finishDocumentData_(std::shared_ptr<PrintJob> job) {
 	if ((job_file_fd = job->createJobFile()) < 0) {
 		strerror_s(err_buf, sizeof(err_buf), errno);
 		respond(IPP_STATUS_ERROR_INTERNAL, "Unable to create print file: %s!", err_buf);
-		goto ABORT_JOB;
+		ret = false;
+		goto END;
 	}
-	std::cerr << "Created job file '" << job->getFilepath() << "'" << '\n';
+	errlog_ss << "created job file: '" << job->getFilepath() << "'" << '\n';
 
 	while ((bytes = httpRead2(http_client_->getConnection(), buf, sizeof(buf))) > 0) {
 		if (write(job_file_fd, buf, (size_t)bytes) < bytes) {
@@ -778,7 +757,8 @@ bool IPPClient::finishDocumentData_(std::shared_ptr<PrintJob> job) {
 			job->unlinkJobFile();
 			strerror_s(err_buf, sizeof(err_buf), err);
 			respond(IPP_STATUS_ERROR_INTERNAL, "Unable to write print file: %s!", err_buf);
-			goto ABORT_JOB;
+			ret = false;
+			goto END;
 		}
 	}
 
@@ -787,27 +767,29 @@ bool IPPClient::finishDocumentData_(std::shared_ptr<PrintJob> job) {
 		job->closeJobFile();
 		job->unlinkJobFile();
 		respond(IPP_STATUS_ERROR_INTERNAL, "Unable to read print file!");
-		goto ABORT_JOB;
+		ret = false;
+		goto END;
 	}
 
 	if (job->closeJobFile()) {
 		int err = errno;
 		job->unlinkJobFile();
 		respond(IPP_STATUS_ERROR_INTERNAL, "Unable to write print file: %s", strerror(err));
-		goto ABORT_JOB;
+		ret = false;
+		goto END;
 	}
 
-	std::cerr << "[" << __FUNCTION__ << "] Exit, Successfully received the document data" << '\n';
-	return true;
-
-ABORT_JOB:
-	job->abort();
-	std::cerr << "[" << __FUNCTION__ << "] Exit, Job Aborted" << '\n';
-	return false;
+END:
+	ERROR_LOGGER->writeLog(errlog_ss.str());
+	if (!ret) {
+		job->abort();
+	}
+	return ret;
 }
 
 bool IPPClient::validJobAttributes_() {
-	std::cerr << "[" << __FUNCTION__ << "] Enter" << '\n';
+	//std::stringstream errlog_ss;
+	//errlog_ss << "[" + http_client_->getHostname() + ":" + username_ + "] " << __FUNCTION__ << '\n';
 	TestPrint::printIPPAttrs(request_);
 	/*
 	기본적으로
@@ -824,10 +806,6 @@ bool IPPClient::validJobAttributes_() {
 	"job-impressions"
 	"job-sheets" -> determines which Job start/end sheet(s).
 	
-	"media-col"
-	"printer-resolution"
-	"sides"
-	"print-quality"
 	*/
 	bool ret = true; // is valid?
 	ipp_t* printer_attrs = vdp_->getAttributes();
@@ -936,13 +914,12 @@ bool IPPClient::validJobAttributes_() {
 			}
 		}
 	}
-
-	std::cerr << "[" << __FUNCTION__ << "] Exit, Return: " << std::boolalpha << ret << '\n';
 	return ret;
 }
 
 bool IPPClient::validDocAttributes_() {
-	std::cerr << "[" << __FUNCTION__ << "] Enter" << '\n';
+	std::stringstream errlog_ss;
+	errlog_ss << "[" + http_client_->getHostname() + ":" + username_ + "] " << __FUNCTION__ << '\n';
 	bool ret = true;
 	ipp_op_t op = ippGetOperation(request_);
 	const std::string op_name = ippOpString(op);
@@ -963,7 +940,7 @@ bool IPPClient::validDocAttributes_() {
 			ret = false;
 		}
 		else {
-			std::cerr << http_client_->getHostname() << " " << op_name << " compression='" << compression << "'\n";
+			errlog_ss << "compression='" << compression << "'\n";
 			ippAddString(request_, IPP_TAG_JOB, IPP_TAG_KEYWORD, "compression-supplied", NULL, compression.c_str()); // 무슨 역할? -> TODO: RFC8011
 			
 			if (compression != "none") {
@@ -984,7 +961,7 @@ bool IPPClient::validDocAttributes_() {
 			ret = false;
 		}
 		else {
-			std::cerr << http_client_->getHostname() << " " << op_name << " document-format='" << format << "'\n";
+			errlog_ss << "document-format='" << format << "'\n";
 			ippAddString(request_, IPP_TAG_JOB, IPP_TAG_MIMETYPE, "document-format-supplied", NULL, format.c_str());
 		}
 	}
@@ -995,11 +972,13 @@ bool IPPClient::validDocAttributes_() {
 	}
 
 	/* documnet-name */
-	if ((attr = ippFindAttribute(request_, "document-name", IPP_TAG_NAME)) != NULL) {
-		ippAddString(request_, IPP_TAG_JOB, IPP_TAG_NAME, "document-name-supplied", NULL, ippGetString(attr, 0, NULL));
-	}
+	// 2020-06-16: Windows에 제출할 문서 이름은 job-name으로 대체
+	//if ((attr = ippFindAttribute(request_, "document-name", IPP_TAG_NAME)) != NULL) {
+	//	ippAddString(request_, IPP_TAG_JOB, IPP_TAG_NAME, "document-name-supplied", NULL, ippGetString(attr, 0, NULL));
+	//}
 
-	std::cerr << "[" << __FUNCTION__ << "] Exit, Return: " << std::boolalpha << ret << '\n';
+	//std::cerr << "[" << __FUNCTION__ << "] END, Return: " << std::boolalpha << ret << '\n';
+	ERROR_LOGGER->writeLog(errlog_ss.str());
 	return ret;
 };
 

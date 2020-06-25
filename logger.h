@@ -3,6 +3,7 @@
 #include <fstream>
 #include <queue>
 #include <array>
+#include <cstdio>
 
 class LoggerBase {
 public:
@@ -12,14 +13,22 @@ public:
 	LoggerBase(LoggerBase&&) = delete;
 	LoggerBase& operator=(const LoggerBase&) = delete;
 	LoggerBase& operator=(LoggerBase&&) = delete;
-	template<typename... Args>
-	void writef(const std::string& format, Args... args);
+	virtual void writeLog(const std::string& message) = 0;
+	//template<typename... Args>
+	//void writefLog(const std::string& format, Args... args) {
+	//	//size_t size = snprintf(nullptr, 0, format.c_str(), args...) + 1;
+	//	size_t size = snprintf(format_buffer_, kFormatBufferSize, format.c_str(), args...);
+	//	this->writeLog(std::string(format_buffer_));
+	//};
+	//template<typename T>
+	//LoggerBase& operator<<(T arg) {
+	//
+	//}
 protected:
-	virtual void openOstream(const std::string& name) = 0;
+	virtual void openOstream(const std::string& name) = 0; // convert to ostream -> outstream
 	virtual void closeOstream() = 0;
-	virtual void write(const std::string& message) = 0;
 private:
-	constexpr static int kFormatBufferSize = 4 * 1024; // 4KB
+	const int kFormatBufferSize = 4 * 1024; // 4KB
 	char* format_buffer_ = nullptr;
 	//std::queue<std::string> message_queue_; //TODO: multi-threading
 };
@@ -28,33 +37,23 @@ class ConsoleLogger : public LoggerBase {
 public:
 	ConsoleLogger() = default;
 	virtual ~ConsoleLogger() = default;
-	//template<typename... Args>
-	//void writef(const std::string& format, Args... args);
-
-private:
+	virtual void writeLog(const std::string& message) override;
+protected:
 	virtual void openOstream(const std::string&) override {};
 	virtual void closeOstream() override {};
-	virtual void write(const std::string& message) override;
 };
 
 class FileLogger : public LoggerBase {
 public:
 	FileLogger();
 	FileLogger(const std::string& filepath);
-	//FileLogger(const FileLogger& src);
-	//FileLogger& operator=(const FileLogger& rhs);
 	virtual ~FileLogger();
-	//template<typename... Args>
-	//void writef(const std::string& format, Args... args);
-
 	std::string getFilepath() const { return filepath_; };
-
+	virtual void writeLog(const std::string& message) override;
+protected:
+	virtual void openOstream(const std::string& filepath) override; // TODO: 에러체크
+	virtual void closeOstream() override;
 private:
 	const std::string filepath_;
 	std::ofstream file_output_stream_;
-
-	void init();
-	virtual void openOstream(const std::string& filepath) override;
-	virtual void closeOstream() override;
-	virtual void write(const std::string& message) override;
 };

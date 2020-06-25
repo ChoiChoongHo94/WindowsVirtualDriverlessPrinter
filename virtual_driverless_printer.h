@@ -23,7 +23,7 @@ public:
 	static const int kMaxThreads = 5;
 	*/
 	
-	VirtualDriverlessPrinter(const std::string& name, const int port);
+	VirtualDriverlessPrinter(/*const std::string& name,*/ const int port);
 	virtual ~VirtualDriverlessPrinter();
 	void run();
 	bool printFile(const std::shared_ptr<PrintJob>& job);
@@ -49,6 +49,7 @@ public:
 private:
 	const time_t start_time_;
 	const std::string name_;
+	wchar_t windows_printer_name_[1024];
 	const std::string hostname_;
 	const std::string uuid_;
 	const std::string uri_;
@@ -62,8 +63,7 @@ private:
 	const DNSServiceRef bonjour_service_ = nullptr;
 	ipp_pstate_t state_ = IPP_PSTATE_IDLE;
 	ipp_t* attrs_ = ippNew();
-	wchar_t windows_printer_name_[1024]; // windows printer binded to this
-	
+	std::unordered_map<std::string, WORD> media_size_db_;
 	
 	//PrintJob* active_job_;
 	ThreadPool ipp_client_thread_pool_;
@@ -73,5 +73,5 @@ private:
 	//std::queue<std::shared_ptr<PrintJob>& > job_queue_;
 	
 	void initBonjourService_();
-	static void CALLBACK ipp_client_routine_(PTP_CALLBACK_INSTANCE, void* context, PTP_WORK);
+	//static void CALLBACK ipp_client_routine_(PTP_CALLBACK_INSTANCE, void* context, PTP_WORK);
 };

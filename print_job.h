@@ -10,9 +10,9 @@ class VirtualDriverlessPrinter;
 class PrintJob {
 public:
 	//static void initPrivateStatics();
-	PrintJob(ipp_t* request, VirtualDriverlessPrinter* vdp);
+	PrintJob(const std::string& hostname, const std::string& username, ipp_t* request, VirtualDriverlessPrinter* vdp);
 	virtual ~PrintJob();
-	void* process();
+	//void* process();
 	void abort();
 	int createJobFile(); // create(open) a job file and return the fd
 	int closeJobFile();
@@ -22,6 +22,7 @@ public:
 	int getId() const { return id_; };
 	int getFd() const { return fd_; };
 	std::string getFilepath() const { return filepath_; };
+	std::string getHostname() const { return hostname_; };
 	std::string getUsername() const { return username_; };
 
 	void setState(ipp_jstate_t state);
@@ -32,17 +33,18 @@ public:
 	void setCompletedTime(time_t time);
 
 private:
-	int id_ = -1;
-	int fd_ = -1;
+	const int id_ = -1;
+	const int fd_ = -1;
 	VirtualDriverlessPrinter* vdp_ = nullptr; // owner printer
 	ipp_t* attrs_ = ippNew(); // job attributes
 	ipp_jstate_t state_ = IPP_JSTATE_HELD; // job state
-	std::string uri_; // job uri
-	std::string name_; // job name
-	std::string filepath_;
-	std::string username_;
-	std::string format_ = "application/pdf";
-	std::string impressions_;
+	const std::string uri_; // job uri
+	const std::string name_ = ""; // job name
+	const std::string filepath_ = "";
+	const std::string hostname_ = ""; // requesting hostname
+	const std::string username_ = ""; // requesting username
+	const std::string format_ = "application/pdf";
+	const int impressions_ = -1;
 	time_t created_time_;
 	time_t processing_time_;
 	time_t completed_time_;

@@ -12,4 +12,8 @@ namespace Util {
 	void copy_job_attributes(ipp_t* dst, PrintJob* pjob, cups_array_t* ra);
 	void copy_job_attributes(ipp_t* dst, PrintJob* pjob, const std::vector<std::string>& rv);
 	int group_filter_cb(const GroupFilter& filter, ipp_t* dst, ipp_attribute_t* attr);
-};
+	std::string get_attr_stamp(ipp_attribute_t* attr); // return 'name:value' of an ipp attribute
+	const std::string get_userhome_dir();
+	const std::string get_timestamp();
+	std::string wstr_to_str(wchar_t* wstr, size_t len);
+}

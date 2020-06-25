@@ -8,7 +8,7 @@
 namespace Util {
 	//TODO: wrap cups_array_t to std::vector
 	void copy_attributes(ipp_t* dst, ipp_t* src, cups_array_t* ra, ipp_tag_t group_tag, int quickcopy) {
-		GroupFilter filter = { ra, IPP_TAG_ZERO };
+		GroupFilter filter = { ra, group_tag };
 		ippCopyAttributes(dst, src, quickcopy, (ipp_copycb_t)group_filter_cb, &filter);
 	}
 
@@ -97,7 +97,7 @@ namespace Util {
 
 	int group_filter_cb(const GroupFilter& filter, ipp_t* dst, ipp_attribute_t* attr) {
 		ipp_tag_t attr_group = ippGetGroupTag(attr);
-		std::string attr_name = std::string(ippGetName(attr));
+		std::string attr_name = ippGetName(attr);
 
 		if ((filter.group_tag != IPP_TAG_ZERO && attr_group != filter.group_tag && attr_group != IPP_TAG_ZERO) ||
 			attr_name.empty() ||
@@ -111,5 +111,40 @@ namespace Util {
 		this means that the client is interested to 'all' attributes.
 		*/
 		return (!filter.ra || (cupsArrayFind(filter.ra, (void*)attr_name.c_str()) != nullptr));
+	}
+
+	std::string get_attr_stamp(ipp_attribute_t* attr) {
+		return std::string(ippGetName(attr)) + "='" +
+			(ippGetValueTag(attr) >= IPP_TAG_TEXT ? ippGetString(attr, 0, NULL) : "NotString") + "'";
+	}
+
+	const std::string get_userhome_dir() {
+		char* userhome_dir;
+		size_t num_elements;
+		errno_t err = _dupenv_s(&userhome_dir, &num_elements, "USERPROFILE");
+		if (err != 0) {
+			CONSOLE_LOGGER->writeLog(std::to_string(err));
+			abort();
+		}
+		const std::string ret = std::string(userhome_dir);
+		free(userhome_dir);
+		return ret;
+	}
+
+	const std::string get_timestamp() {
+		time_t now = time(NULL);
+		struct tm tm;
+		localtime_s(&tm, &now);
+		char buffer[64];
+		strftime(buffer, sizeof(buffer), "%d/%b/%Y:%X", &tm);
+		return buffer;
+	}
+
+	std::string wstr_to_str(wchar_t* wstr, size_t len) {
+		std::string ret;
+		std::wstring tmp_ws = wstr;
+		assert(!tmp_ws.empty());
+		ret.assign(tmp_ws.begin(), tmp_ws.end());
+		return ret;
 	}
 }
