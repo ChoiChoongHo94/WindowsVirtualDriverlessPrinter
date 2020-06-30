@@ -119,9 +119,9 @@ namespace Util {
 	}
 
 	const std::string get_userhome_dir() {
-		char* userhome_dir;
-		size_t num_elements;
-		errno_t err = _dupenv_s(&userhome_dir, &num_elements, "USERPROFILE");
+		char* userhome_dir = nullptr;
+		size_t num_element;
+		errno_t err = _dupenv_s(&userhome_dir, &num_element, "USERPROFILE");
 		if (err != 0) {
 			CONSOLE_LOGGER->writeLog(std::to_string(err));
 			abort();

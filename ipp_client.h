@@ -2,8 +2,6 @@
 #include "virtual_driverless_printer.h"
 #include "my_definitions.h"
 #include "logger.h"
-#include <cups/http.h>
-#include <cups/ipp.h>
 #include <memory>
 
 class IPPClient;

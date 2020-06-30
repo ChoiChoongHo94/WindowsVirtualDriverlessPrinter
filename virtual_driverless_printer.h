@@ -1,5 +1,4 @@
 #pragma once
-#pragma comment(lib, "ws2_32.lib")
 
 #include <cups/ipp.h>
 #include <cups/cups.h>
@@ -15,6 +14,8 @@
 
 #define poll WSAPoll
 typedef ULONG nfds_t;
+
+extern const std::string SPOOL_DIR;
 
 class VirtualDriverlessPrinter {
 public:
@@ -55,7 +56,7 @@ private:
 	const std::string uri_;
 	//const std::string device_uri_;
 	const std::string adminurl_;
-	const std::string spool_dir_ = "C:/Temp";
+	const std::string spool_dir_ = SPOOL_DIR;
 	const cups_ptype_t printer_type_ = 0;
 	const int port_ = -1;
 	const int ipv4_ = -1; // ipv4 socket

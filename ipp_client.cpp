@@ -58,12 +58,12 @@ HTTPClient::HTTPClient(int sock_fd) {
 	if ((http_ = httpAcceptConnection(sock_fd, 1)) != nullptr) {
 		httpGetHostname(http_, hostname, sizeof(hostname));
 		const_cast<std::string&>(hostname_) = hostname;
+		const_cast<clock_t&>(start_) = clock();
+		log_ss << Util::get_timestamp() << " [" << hostname_ << "] accept HTTP connection.";
 	}
 	else {
-
+		log_ss << Util::get_timestamp() << " httpAcceptConnection failed.";
 	}
-	const_cast<clock_t&>(start_) = clock();
-	log_ss << Util::get_timestamp() << " [" << hostname_ << "] accept HTTP connection.";
 	CONSOLE_LOGGER->writeLog(log_ss.str());
 	//CONSOLE_LOGGER->writefLog("%s [%s] %s start.", Util::get_timestamp(), hostname_, httpStateString(httpGetState(http_)));
 }
@@ -467,7 +467,7 @@ bool IPPClient::process() {
 		}
 		CONSOLE_LOGGER->writeLog(std::string("IPP state: ") + ippStateString(ippGetState(request_)) + ", HTTP state: " + httpStateString(httpGetState(http_client_->getConnection())));
 	} // 'while(httpWait(..))' loop end
-	httpFlushWrite(http);
+	httpFlush(http);
 	httpClose(http);
 	if (request_ != nullptr) ippDelete(request_);
 	if (response_ != nullptr) ippDelete(response_);
