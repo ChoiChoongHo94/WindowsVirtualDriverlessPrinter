@@ -12,6 +12,10 @@ LoggerBase::~LoggerBase() {
 	delete[] format_buffer_;
 }
 
+ConsoleLogger::ConsoleLogger() {
+	SetConsoleOutputCP(CP_UTF8);
+}
+
 void ConsoleLogger::writeLog(const std::string& message) {
 	std::cerr << message << '\n' << std::flush;
 }

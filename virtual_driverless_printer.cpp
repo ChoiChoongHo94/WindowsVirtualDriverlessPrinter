@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <fpdfview.h>
 #include <unordered_set>
+#include <cctype>
 
 static unsigned WINAPI ProcessIPPThread(LPVOID ipp_client);
 
@@ -42,6 +43,7 @@ VirtualDriverlessPrinter::VirtualDriverlessPrinter(/*const std::string& name,*/ 
 	DWORD cch_printer = ARRAYSIZE(windows_printer_name_);
 	GetDefaultPrinter(windows_printer_name_, &cch_printer);
 	const_cast<std::string&>(name_) = Util::wstr_to_str(windows_printer_name_, lstrlen(windows_printer_name_));
+	const_cast<std::string&>(name_utf8_) = Util::wstr_to_utf8(std::wstring(windows_printer_name_));
 	CONSOLE_LOGGER->writeLog(std::string("Windows's default printer: ") + Util::wstr_to_str(windows_printer_name_, cch_printer));
 	if (!OpenPrinter(windows_printer_name_, &hprinter, NULL)) {
 		CONSOLE_LOGGER->writeLog(std::string("OpenPrinter failed! <- ") + std::to_string(GetLastError()));
@@ -71,7 +73,8 @@ VirtualDriverlessPrinter::VirtualDriverlessPrinter(/*const std::string& name,*/ 
 	//num_resolutions = DeviceCapabilities(windows_printer_name_, windows_printer_name_, DC_ENUMRESOLUTIONS, (LPWSTR)poutput, NULL);
 
 	auto& printer_type_ref = const_cast<cups_ptype_t&>(printer_type_);
-	char* media_supported[64];
+	char* media_supported[128];
+
 	if (collate > 0) {
 		const char* multiple_document_handling[] = {
 			/*
@@ -86,17 +89,20 @@ VirtualDriverlessPrinter::VirtualDriverlessPrinter(/*const std::string& name,*/ 
 		ippAddStrings(attrs_, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_KEYWORD), "multiple-document-handling-supported", sizeof(multiple_document_handling) / sizeof(multiple_document_handling[0]), NULL, multiple_document_handling);
 		printer_type_ref |= CUPS_PRINTER_COLLATE;
 	}
+
 	if (copies > 0) {
 		ippAddInteger(attrs_, IPP_TAG_PRINTER, IPP_TAG_INTEGER, "copies-default", 1);
 		ippAddRange(attrs_, IPP_TAG_PRINTER, "copies-supported", 1, 99); // FIXME possibility
 		printer_type_ref |= CUPS_PRINTER_COPIES;
 	}
+
 	if (duplex > 0) {
 		const char* sides_supported[] = { "one-sided", "two-sided-long-edge", "two-sided-short-edge" };
 		ippAddString(attrs_, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_KEYWORD), "sides-default", NULL, sides_supported[0]);
 		ippAddStrings(attrs_, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_KEYWORD), "sides-supported", sizeof(sides_supported) / sizeof(sides_supported[0]), NULL, sides_supported);
 		printer_type_ref |= CUPS_PRINTER_DUPLEX;
 	}
+
 	if (color > 0) {
 		const char* print_color_mode_supported[] = { "color", "monochrome" };
 		ippAddString(attrs_, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_KEYWORD), "print-color-mode-default", NULL, print_color_mode_supported[0]);
@@ -104,19 +110,29 @@ VirtualDriverlessPrinter::VirtualDriverlessPrinter(/*const std::string& name,*/ 
 		ippAddBoolean(attrs_, IPP_TAG_PRINTER, "color-supported", true);
 		printer_type_ref |= CUPS_PRINTER_COLOR;
 	}
+
 	if (num_papers > 0) {
 		int media_supported_idx = -1;
+
 		for (int i = 0; i < (int)num_papersizes; ++i) {
 			pwg_media_t* pwg_media = pwgMediaForSize(papersizes[i].x * 10, papersizes[i].y * 10);
+
 			if (pwg_media->ppd == nullptr || media_size_db_.find(pwg_media->pwg) != media_size_db_.cend()) {
 				continue;
 			}
+
+			media_size_db_[pwg_media->ppd] = papers[i];
+			media_supported[++media_supported_idx] = (char*)malloc(strlen(pwg_media->ppd) + 1);
+			strcpy(media_supported[media_supported_idx], pwg_media->ppd);
+
 			media_size_db_[pwg_media->pwg] = papers[i];
 			media_supported[++media_supported_idx] = (char*)malloc(strlen(pwg_media->pwg) + 1);
 			strcpy(media_supported[media_supported_idx], pwg_media->pwg);
+
 			media_supported[media_supported_idx][63] = '\0'; // case for string overflow
 			CONSOLE_LOGGER->writeLog("Supported Media(" + std::to_string(i + 1) + "): " + std::string(pwg_media->pwg));
 		}
+
 		assert(media_supported_idx != -1);
 		num_papers = media_supported_idx + 1;
 	}
@@ -171,7 +187,9 @@ VirtualDriverlessPrinter::~VirtualDriverlessPrinter() {
 
 void VirtualDriverlessPrinter::initBonjourService_() {
 	assert(port_ != -1);
-	std::string service_name = Util::wstr_to_str(windows_printer_name_, ARRAYSIZE(windows_printer_name_));
+	//std::string service_name = Util::wstr_to_str(windows_printer_name_, ARRAYSIZE(windows_printer_name_));
+	//const std::wstring& service_name_wstr = windows_printer_name_;
+	//const std::string& service_name_utf8 = Util::wstr_to_utf8str(service_name_wstr);
 
 	auto& bonjour_service_ref = const_cast<DNSServiceRef&>(bonjour_service_);
 	DNSServiceErrorType err;
@@ -211,13 +229,13 @@ void VirtualDriverlessPrinter::initBonjourService_() {
 		TXTRecordSetValue(&txt_record, "UUID", str_value.size() - 9, str_value.c_str() + 9);
 	}
 
-	if ((err = DNSServiceRegister(&bonjour_service_ref, kDNSServiceFlagsShareConnection, kDNSServiceInterfaceIndexAny, service_name.c_str(),
+	if ((err = DNSServiceRegister(&bonjour_service_ref, kDNSServiceFlagsShareConnection, kDNSServiceInterfaceIndexAny, name_utf8_.c_str(), //service_name.c_str(),
 		"_ipp._tcp", NULL /* domain */, NULL /* host */, htons(port_), TXTRecordGetLength(&txt_record), TXTRecordGetBytesPtr(&txt_record), NULL, NULL)) != kDNSServiceErr_NoError) {
 		CONSOLE_LOGGER->writeLog(std::string("Bonjour Service registration is failed! <- Error code: %s") + std::to_string(err));
 		abort();
 	}
 
-	CONSOLE_LOGGER->writeLog(std::string("Bonjour Service('") + service_name + "') registration on '" + std::to_string(port_) + "' port is success.");
+	CONSOLE_LOGGER->writeLog(std::string("Bonjour Service('") + name_utf8_ + "') registration on '" + std::to_string(port_) + "' port is success.");
 }
 
 void VirtualDriverlessPrinter::run() {
@@ -240,7 +258,7 @@ void VirtualDriverlessPrinter::run() {
 	polldata[2].events = POLLIN;
 	*/
 
-	CONSOLE_LOGGER->writeLog(std::string("The printer '") + name_ + "' is start to run.");
+	CONSOLE_LOGGER->writeLog(std::string("The printer '") + name_utf8_ + "' is start to run.");
 	for (;;) {
 		if (poll(polldata, (nfds_t)num_fds, timeout) < 0 && errno != EINTR) {
 			CONSOLE_LOGGER->writeLog(std::string("WSAPoll failed! <- ") + std::to_string(WSAGetLastError()));
@@ -287,12 +305,13 @@ void VirtualDriverlessPrinter::run() {
 //}
 
 bool VirtualDriverlessPrinter::printFile(const std::shared_ptr<PrintJob>& job) {
-	//std::cerr << "[" << __FUNCTION__ << "] Enter" << '\n';
 	assert(job->getState() == IPP_JSTATE_COMPLETED);
-	//const std::string& log_stamp = "[" + job->getHostname() + ":" + job->getUsername() + "]";
+
 	std::stringstream errlog_ss;
 	errlog_ss << "[" + job->getHostname() + ":" + job->getUsername() + "] " << __FUNCTION__ << '\n';
+
 	FPDF_DOCUMENT pdf_doc = FPDF_LoadDocument(job->getFilepath().c_str(), NULL);
+
 	if (!pdf_doc) {
 		auto err = FPDF_GetLastError();
 		switch (err) {
@@ -339,7 +358,7 @@ bool VirtualDriverlessPrinter::printFile(const std::shared_ptr<PrintJob>& job) {
 	LPDEVMODE pdevmode = pi2->pDevMode;
 
 	/*
-	output-bin
+	TODO: output-bin
 	*/
 	ipp_t* job_attrs = job->getAttributes();
 	ipp_attribute_t* attr = nullptr;
@@ -404,8 +423,8 @@ bool VirtualDriverlessPrinter::printFile(const std::shared_ptr<PrintJob>& job) {
 	}
 
 	// FIXME: only for test
-	pdevmode->dmPrintQuality = DMRES_DRAFT;
-	pdevmode->dmFields |= DM_PRINTQUALITY;
+	//pdevmode->dmPrintQuality = DMRES_DRAFT;
+	//pdevmode->dmFields |= DM_PRINTQUALITY;
 
 	{/* only for logging, TODO: 추후에 로깅 필요한 옵션 추가 */
 	}
@@ -419,6 +438,7 @@ bool VirtualDriverlessPrinter::printFile(const std::shared_ptr<PrintJob>& job) {
 	}
 	*/
 
+	/* Windows Spooling */
 	DOCINFO doc_info = { 0 };
 	doc_info.cbSize = sizeof(DOCINFO);
 	constexpr size_t k_docname_buf_size = 256;
@@ -426,13 +446,8 @@ bool VirtualDriverlessPrinter::printFile(const std::shared_ptr<PrintJob>& job) {
 	if ((attr = ippFindAttribute(job_attrs, "job-name", IPP_TAG_NAME)) != NULL) {
 		std::string job_name = ippGetString(attr, 0, NULL);
 		job_name = job_name.substr(job_name.find(" - ") + 3); // assume 'job-name' set from CUPS
-		{/* convert 'char*' to 'wchar_t*' */
-			size_t job_name_len = job_name.size() + 1;
-			job_name_len > k_docname_buf_size ? job_name_len = k_docname_buf_size : NULL;
-			size_t converted_size;
-			mbstowcs_s(&converted_size, docname_buf, job_name_len, job_name.c_str(), _TRUNCATE);
-			doc_info.lpszDocName = docname_buf;
-		}
+		wcscpy(docname_buf, Util::utf8_to_wstr(job_name).c_str());
+		doc_info.lpszDocName = docname_buf;
 		errlog_ss << "JOB_ATTR: " << Util::get_attr_stamp(attr) << '\n';
 	}
 	else {
@@ -447,12 +462,24 @@ bool VirtualDriverlessPrinter::printFile(const std::shared_ptr<PrintJob>& job) {
 		return false;
 	}
 
-	StartDoc(hdc, &doc_info);
+	if (StartDoc(hdc, &doc_info) <= 0) {
+		errlog_ss << "WINAPI_ERR: " << "StartDoc failed! <- " << GetLastError() << ".\n";
+		ERROR_LOGGER->writeLog(errlog_ss.str());
+		return false;
+	}
+
 	int num_pdf_pages = FPDF_GetPageCount(pdf_doc);
 	double pdf_page_width, pdf_page_height, logpixelsx, logpixelsy, size_x, size_y;
 	FPDF_PAGE pdf_page = nullptr;
+	int render_flags = FPDF_ANNOT | FPDF_PRINTING | FPDF_NO_CATCH;
+
+	if (pdevmode->dmColor == DMCOLOR_MONOCHROME) {
+		render_flags |= FPDF_GRAYSCALE;
+	}
+
 	for (int i = 0; i < num_pdf_pages; i++) {
 		pdf_page = FPDF_LoadPage(pdf_doc, i);
+
 		if (pdf_page == nullptr) {
 			errlog_ss << "FPDF_ERR: " << "FPDF_LoadPage failed! <- " << FPDF_GetLastError() << ".\n";
 			ERROR_LOGGER->writeLog(errlog_ss.str());
@@ -466,15 +493,16 @@ bool VirtualDriverlessPrinter::printFile(const std::shared_ptr<PrintJob>& job) {
 		size_x = pdf_page_width * logpixelsx / 72;
 		size_y = pdf_page_height * logpixelsy / 72;
 		StartPage(hdc);
-		FPDF_RenderPage(hdc, pdf_page, 0, 0, size_x, size_y, 0, FPDF_ANNOT | FPDF_PRINTING | FPDF_NO_CATCH);
+		FPDF_RenderPage(hdc, pdf_page, 0, 0, size_x, size_y, 0, render_flags);
 		EndPage(hdc);
 		errlog_ss << "Page #" << i + 1 << "(total:" << num_pdf_pages << ") with " << size_x << ", " << size_y << '\n';
 	}
-	FPDF_CloseDocument(pdf_doc);
 
+	FPDF_CloseDocument(pdf_doc);
 	EndDoc(hdc);
 	ClosePrinter(hprinter);
 	ERROR_LOGGER->writeLog(errlog_ss.str());
+	job->unlinkJobFile();
 	return true;
 }
 

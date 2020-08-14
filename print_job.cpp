@@ -155,16 +155,17 @@ void PrintJob::abort() {
 }
 
 int PrintJob::createJobFile() {
-	const char* tmp_job_name = ippGetString(ippFindAttribute(attrs_, "job-name", IPP_TAG_NAME), 0, NULL);
-	std::string job_name;
-	if (!tmp_job_name) {
+	std::string job_name = (std::string)ippGetString(ippFindAttribute(attrs_, "job-name", IPP_TAG_NAME), 0, NULL);
+	
+	if (job_name.empty()) {
 		job_name = "untitled";
 	}
-	else {
-		job_name = tmp_job_name;
-	}
-	const_cast<std::string&>(filepath_) = vdp_->getSpoolDir() + "/" + std::to_string(id_) + "-" + job_name;
-	return (const_cast<int&>(fd_) = open(filepath_.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0666));
+
+	const_cast<std::string&>(filepath_) = vdp_->getSpoolDir() + "/" + std::to_string(id_) + "-" + Util::hash_str(job_name);
+	//std::wstring filepath_wstr = Util::utf8_to_wstr(filepath_);
+	
+	//return (const_cast<int&>(fd_) = _wopen(filepath_wstr.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_BINARY | _O_U8TEXT, 0666));
+	return (const_cast<int&>(fd_) = open(filepath_.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_BINARY | _O_U8TEXT, 0666));
 }
 
 int PrintJob::closeJobFile() {

@@ -15,5 +15,8 @@ namespace Util {
 	std::string get_attr_stamp(ipp_attribute_t* attr); // return 'name:value' of an ipp attribute
 	const std::string get_userhome_dir();
 	const std::string get_timestamp();
-	std::string wstr_to_str(wchar_t* wstr, size_t len);
+	std::string wstr_to_str(wchar_t* wstr, size_t len); // FIXME: delete
+	std::string wstr_to_utf8(const std::wstring& wstr);
+	std::wstring utf8_to_wstr(const std::string& utf8);
+	std::string hash_str(const std::string& str);
 }

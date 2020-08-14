@@ -22,6 +22,7 @@ public:
 	int getId() const { return id_; };
 	int getFd() const { return fd_; };
 	std::string getFilepath() const { return filepath_; };
+	//std::wstring getFilepathW() const { return filepath_wstr_; };
 	std::string getHostname() const { return hostname_; };
 	std::string getUsername() const { return username_; };
 
@@ -41,6 +42,7 @@ private:
 	const std::string uri_; // job uri
 	const std::string name_ = ""; // job name
 	const std::string filepath_ = "";
+	//const std::wstring filepath_wstr_ = L"";
 	const std::string hostname_ = ""; // requesting hostname
 	const std::string username_ = ""; // requesting username
 	const std::string format_ = "application/pdf";

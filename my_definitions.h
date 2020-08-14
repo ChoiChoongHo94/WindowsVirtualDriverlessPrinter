@@ -1,6 +1,7 @@
 #pragma once
 #include <cups/array.h>
 #include <cups/ipp.h>
+#include <memory>
 #include "logger.h"
 
 /* externs for initialization */

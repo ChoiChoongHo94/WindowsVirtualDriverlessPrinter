@@ -4,11 +4,15 @@
 #include <cups/cups.h>
 #include <string>
 #include <iostream>
+#include <codecvt>
+#include <functional>
 
 namespace Util {
 	//TODO: wrap cups_array_t to std::vector
 	void copy_attributes(ipp_t* dst, ipp_t* src, cups_array_t* ra, ipp_tag_t group_tag, int quickcopy) {
-		GroupFilter filter = { ra, group_tag };
+		GroupFilter filter;
+		filter.ra = ra;
+		filter.group_tag = group_tag;
 		ippCopyAttributes(dst, src, quickcopy, (ipp_copycb_t)group_filter_cb, &filter);
 	}
 
@@ -146,5 +150,27 @@ namespace Util {
 		assert(!tmp_ws.empty());
 		ret.assign(tmp_ws.begin(), tmp_ws.end());
 		return ret;
+	}
+
+	std::string wstr_to_utf8(const std::wstring& wstr)
+	{
+		std::string ret;
+		int len = WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), wstr.length(), NULL, 0, NULL, NULL);
+		if (len > 0)
+		{
+			ret.resize(len);
+			WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), wstr.length(), &ret[0], len, NULL, NULL);
+		}
+		return ret;
+	}
+
+	std::wstring utf8_to_wstr(const std::string& utf8) {
+		std::wstring_convert<std::codecvt_utf8<wchar_t>> wconv;
+		return wconv.from_bytes(utf8);
+	}
+
+	std::string hash_str(const std::string& str) {
+		std::hash<std::string> hs;
+		return std::to_string(hs(str));
 	}
 }

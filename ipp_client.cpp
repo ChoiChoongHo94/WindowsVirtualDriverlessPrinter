@@ -736,17 +736,20 @@ void IPPClient::ippGetJobAttributes_() {
 bool IPPClient::finishDocumentData_(std::shared_ptr<PrintJob> job) {
 	std::stringstream errlog_ss;
 	errlog_ss << "[" + http_client_->getHostname() + ":" + username_ + "] " << __FUNCTION__ << '\n';
+
 	bool ret = true;
 	size_t bytes = 0;
 	char buf[4096];
 	char err_buf[1024];
 	int job_file_fd = -1;
+
 	if ((job_file_fd = job->createJobFile()) < 0) {
 		strerror_s(err_buf, sizeof(err_buf), errno);
 		respond(IPP_STATUS_ERROR_INTERNAL, "Unable to create print file: %s!", err_buf);
 		ret = false;
 		goto END;
 	}
+
 	errlog_ss << "created job file: '" << job->getFilepath() << "'" << '\n';
 
 	while ((bytes = httpRead2(http_client_->getConnection(), buf, sizeof(buf))) > 0) {
@@ -847,7 +850,7 @@ bool IPPClient::validJobAttributes_() {
 	if ((attr = ippFindAttribute(request_, "orientation-requested", IPP_TAG_ZERO)) != NULL ||
 		(attr = ippFindAttribute(request_, "page-ranges", IPP_TAG_ZERO)) != NULL) {
 		respondUnsupported(attr);
-		ret = false;
+		//ret = false;
 	}
 
 	if ((attr = ippFindAttribute(request_, "job-name", IPP_TAG_ZERO)) != NULL) {
@@ -977,7 +980,6 @@ bool IPPClient::validDocAttributes_() {
 	//	ippAddString(request_, IPP_TAG_JOB, IPP_TAG_NAME, "document-name-supplied", NULL, ippGetString(attr, 0, NULL));
 	//}
 
-	//std::cerr << "[" << __FUNCTION__ << "] END, Return: " << std::boolalpha << ret << '\n';
 	ERROR_LOGGER->writeLog(errlog_ss.str());
 	return ret;
 };

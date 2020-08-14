@@ -50,6 +50,7 @@ public:
 private:
 	const time_t start_time_;
 	const std::string name_;
+	const std::string name_utf8_;
 	wchar_t windows_printer_name_[1024];
 	const std::string hostname_;
 	const std::string uuid_;

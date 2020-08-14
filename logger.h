@@ -35,7 +35,7 @@ private:
 
 class ConsoleLogger : public LoggerBase {
 public:
-	ConsoleLogger() = default;
+	ConsoleLogger();
 	virtual ~ConsoleLogger() = default;
 	virtual void writeLog(const std::string& message) override;
 protected:
