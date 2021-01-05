@@ -18,5 +18,6 @@ namespace Util {
 	std::string wstr_to_str(wchar_t* wstr, size_t len); // FIXME: delete
 	std::string wstr_to_utf8(const std::wstring& wstr);
 	std::wstring utf8_to_wstr(const std::string& utf8);
+	bool hangle_check(const std::string& utf8);
 	std::string hash_str(const std::string& str);
 }

@@ -44,7 +44,13 @@ VirtualDriverlessPrinter::VirtualDriverlessPrinter(/*const std::string& name,*/ 
 	GetDefaultPrinter(windows_printer_name_, &cch_printer);
 	const_cast<std::string&>(name_) = Util::wstr_to_str(windows_printer_name_, lstrlen(windows_printer_name_));
 	const_cast<std::string&>(name_utf8_) = Util::wstr_to_utf8(std::wstring(windows_printer_name_));
-	CONSOLE_LOGGER->writeLog(std::string("Windows's default printer: ") + Util::wstr_to_str(windows_printer_name_, cch_printer));
+
+	if (Util::hangle_check(name_utf8_)) {
+		const_cast<std::string&>(name_) = "Windows_Virtual_Driverless";
+		const_cast<std::string&>(name_utf8_) = "Windows_Virtual_Driverless";
+	}
+
+	CONSOLE_LOGGER->writeLog(std::string("Windows's default printer: ") + name_);
 	if (!OpenPrinter(windows_printer_name_, &hprinter, NULL)) {
 		CONSOLE_LOGGER->writeLog(std::string("OpenPrinter failed! <- ") + std::to_string(GetLastError()));
 		abort();
@@ -229,7 +235,7 @@ void VirtualDriverlessPrinter::initBonjourService_() {
 		TXTRecordSetValue(&txt_record, "UUID", str_value.size() - 9, str_value.c_str() + 9);
 	}
 
-	if ((err = DNSServiceRegister(&bonjour_service_ref, kDNSServiceFlagsShareConnection, kDNSServiceInterfaceIndexAny, name_utf8_.c_str(), //service_name.c_str(),
+	if ((err = DNSServiceRegister(&bonjour_service_ref, kDNSServiceFlagsShareConnection, kDNSServiceInterfaceIndexAny, "vdp_test1", //name_utf8_.c_str(),
 		"_ipp._tcp", NULL /* domain */, NULL /* host */, htons(port_), TXTRecordGetLength(&txt_record), TXTRecordGetBytesPtr(&txt_record), NULL, NULL)) != kDNSServiceErr_NoError) {
 		CONSOLE_LOGGER->writeLog(std::string("Bonjour Service registration is failed! <- Error code: %s") + std::to_string(err));
 		abort();
@@ -380,12 +386,14 @@ bool VirtualDriverlessPrinter::printFile(const std::shared_ptr<PrintJob>& job) {
 			pdevmode->dmFields |= DM_COLOR;
 			errlog_ss << "PRINT_OPT: " << Util::get_attr_stamp(attr) << '\n';
 		}
+
 		if ((printer_type_ & CUPS_PRINTER_COPIES) &&
 			(attr = ippFindAttribute(job_attrs, "copies", IPP_TAG_ZERO)) != NULL) {
 			pdevmode->dmCopies = ippGetInteger(attr, 0);
 			pdevmode->dmFields |= DM_COPIES;
 			errlog_ss << "PRINT_OPT: " << Util::get_attr_stamp(attr) << '\n';
 		}
+
 		if ((printer_type_ & CUPS_PRINTER_DUPLEX) &&
 			(attr = ippFindAttribute(job_attrs, "sides", IPP_TAG_ZERO)) != NULL) {
 			str_value = ippGetString(attr, 0, NULL);
@@ -401,6 +409,7 @@ bool VirtualDriverlessPrinter::printFile(const std::shared_ptr<PrintJob>& job) {
 			pdevmode->dmFields |= DM_DUPLEX;
 			errlog_ss << "PRINT_OPT: " << Util::get_attr_stamp(attr) << '\n';
 		}
+
 		if ((printer_type_ & CUPS_PRINTER_COLLATE) &&
 			(attr = ippFindAttribute(job_attrs, "multiple-document-handling", IPP_TAG_ZERO)) != NULL) {
 			str_value = ippGetString(attr, 0, NULL);

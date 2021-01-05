@@ -169,6 +169,14 @@ namespace Util {
 		return wconv.from_bytes(utf8);
 	}
 
+	bool hangle_check(const std::string& utf8) {
+		for (auto ch : utf8)
+			if ((ch & 0b10000000) != 0)
+				return true;
+
+		return false;
+	}
+
 	std::string hash_str(const std::string& str) {
 		std::hash<std::string> hs;
 		return std::to_string(hs(str));
